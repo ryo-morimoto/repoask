@@ -1,7 +1,7 @@
 //! Git clone operations with shallow clone and atomic swap.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::cache;
 
@@ -82,7 +82,10 @@ fn clone_fresh(
         cmd.args(["--branch", r]);
     }
 
-    cmd.arg(&url).arg(&tmp_dir);
+    cmd.arg(&url)
+        .arg(&tmp_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
 
     let output = cmd.output()?;
 
