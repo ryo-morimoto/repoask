@@ -1,0 +1,17 @@
+[package]
+name = "repoask-repo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+repoask-core.workspace = true
+repoask-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+dirs.workspace = true
+fs2.workspace = true

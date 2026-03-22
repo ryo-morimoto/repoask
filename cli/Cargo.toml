@@ -1,0 +1,18 @@
+[package]
+name = "repoask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "repoask"
+path = "src/main.rs"
+
+[dependencies]
+repoask-core.workspace = true
+repoask-repo.workspace = true
+clap.workspace = true
+serde_json.workspace = true

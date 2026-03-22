@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,9 +10,14 @@ license = "MIT"
 [workspace.dependencies]
 repoask-core = { path = "crates/repoask-core" }
 repoask-parser = { path = "crates/repoask-parser" }
+repoask-repo = { path = "crates/repoask-repo" }
 
 serde = { version = "1", features = ["derive"] }
-bincode = "2"
+serde_json = "1"
+bincode = { version = "2", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+fs2 = "0.4"
 rust-stemmers = "1"
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
