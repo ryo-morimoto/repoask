@@ -1,0 +1,24 @@
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "check-toml" },
+    { id = "end-of-file-fixer" },
+    { id = "check-added-large-files" },
+]
+
+[[repos]]
+repo = "https://github.com/crate-ci/typos"
+rev = "v1.44.0"
+hooks = [
+    { id = "typos" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+    { id = "cargo-fmt", name = "cargo fmt", entry = "cargo fmt -- --check", language = "system", types = ["rust"], pass_filenames = false },
+    { id = "cargo-clippy", name = "cargo clippy", entry = "cargo clippy --workspace --all-targets -- -D warnings", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
+    { id = "cargo-nextest", name = "cargo nextest", entry = "cargo nextest run --workspace", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
+    { id = "cargo-doc", name = "cargo doc", entry = "sh -c 'RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps'", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
+]
