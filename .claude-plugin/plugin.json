@@ -1,0 +1,8 @@
+{
+  "name": "repoask",
+  "description": "Search code and docs in any GitHub repository. Local-first, no external services, fast.",
+  "version": "0.1.0",
+  "author": {
+    "name": "ryo-morimoto"
+  }
+}

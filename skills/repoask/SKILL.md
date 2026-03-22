@@ -1,17 +1,25 @@
-# repoask — Search code and docs in any GitHub repo
+---
+name: repoask
+description: Search code and docs in any GitHub repository using BM25 full-text search. Use when looking up library APIs, finding function signatures, or investigating unfamiliar codebases.
+---
 
-## What this tool does
+# repoask
 
-`repoask` searches code symbols and documentation across any public GitHub repository using BM25 full-text search. No API keys, no Docker, no LLM — just a single binary.
+Search code symbols and documentation across any public GitHub repository. No API keys, no Docker, no LLM — just a single binary.
 
-It indexes functions, classes, types, interfaces, and markdown docs, then lets you search across all of them with one natural language query.
+## Prerequisites
 
-## When to use
+`repoask` must be installed. Check with:
 
-- Looking up how a library works (API, authentication, configuration)
-- Finding function signatures, type definitions, or class structures
-- Searching README, docs, examples, and source code in one query
-- Investigating an unfamiliar repository's codebase
+```
+repoask --version
+```
+
+If not installed:
+
+```
+cargo install repoask
+```
 
 ## Commands
 
@@ -108,7 +116,6 @@ Start with broad queries to find the entry point, then narrow down.
 After getting a Code result with `start_line` and `end_line`, read the source:
 
 ```
-# Using the cached clone path
 cat ~/.cache/repoask/repos/github.com/<owner>/<repo>/repo/<filepath> | sed -n '<start_line>,<end_line>p'
 ```
 
