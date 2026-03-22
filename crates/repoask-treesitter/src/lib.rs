@@ -9,28 +9,8 @@
 mod parser;
 mod queries;
 
+pub use repoask_core::types::ParseOutcome;
 use repoask_core::types::{IndexDocument, Symbol};
-
-/// Outcome of parsing a single file with tree-sitter.
-#[derive(Debug)]
-pub enum ParseOutcome {
-    /// Successfully extracted symbols.
-    Ok(Vec<IndexDocument>),
-    /// File extension not supported by tree-sitter.
-    Unsupported {
-        /// The file path that was skipped.
-        filepath: String,
-        /// The file extension (or `None` if no extension).
-        extension: Option<String>,
-    },
-    /// tree-sitter parser or query failed.
-    Failed {
-        /// The file path that failed.
-        filepath: String,
-        /// Description of the failure.
-        reason: String,
-    },
-}
 
 /// Error type for tree-sitter parse operations.
 #[derive(Debug, thiserror::Error)]

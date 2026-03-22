@@ -1,7 +1,5 @@
 //! High-level repository operations: clone → index → search.
 
-use std::path::Path;
-
 use fs2::FileExt;
 use repoask_core::index::InvertedIndex;
 use repoask_core::types::SearchResult;

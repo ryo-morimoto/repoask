@@ -1,6 +1,6 @@
 //! Tree-sitter query strings for each supported language.
 
-pub const RUST: &str = r#"
+pub(crate) const RUST: &str = r#"
 (function_item
   name: (identifier) @name
   parameters: (parameters) @params) @definition.function
@@ -27,7 +27,7 @@ pub const RUST: &str = r#"
       parameters: (parameters) @params) @definition.method))
 "#;
 
-pub const PYTHON: &str = r#"
+pub(crate) const PYTHON: &str = r#"
 (function_definition
   name: (identifier) @name
   parameters: (parameters) @params) @definition.function
@@ -36,7 +36,7 @@ pub const PYTHON: &str = r#"
   name: (identifier) @name) @definition.class
 "#;
 
-pub const GO: &str = r#"
+pub(crate) const GO: &str = r#"
 (function_declaration
   name: (identifier) @name
   parameters: (parameter_list) @params) @definition.function
@@ -50,7 +50,7 @@ pub const GO: &str = r#"
     name: (type_identifier) @name) @definition.type)
 "#;
 
-pub const JAVA: &str = r#"
+pub(crate) const JAVA: &str = r#"
 (method_declaration
   name: (identifier) @name
   parameters: (formal_parameters) @params) @definition.method
@@ -65,7 +65,7 @@ pub const JAVA: &str = r#"
   name: (identifier) @name) @definition.enum
 "#;
 
-pub const C: &str = r#"
+pub(crate) const C: &str = r#"
 (function_definition
   declarator: (function_declarator
     declarator: (identifier) @name
@@ -78,7 +78,7 @@ pub const C: &str = r#"
   name: (type_identifier) @name) @definition.enum
 "#;
 
-pub const CPP: &str = r#"
+pub(crate) const CPP: &str = r#"
 (function_definition
   declarator: (function_declarator
     declarator: (identifier) @name
@@ -94,7 +94,7 @@ pub const CPP: &str = r#"
   name: (type_identifier) @name) @definition.enum
 "#;
 
-pub const RUBY: &str = r#"
+pub(crate) const RUBY: &str = r#"
 (method
   name: (identifier) @name
   parameters: (method_parameters) @params) @definition.method

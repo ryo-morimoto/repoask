@@ -107,6 +107,31 @@ impl SearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// Parser outcome (shared by all parser crates)
+// ---------------------------------------------------------------------------
+
+/// Outcome of parsing a single file.
+#[derive(Debug)]
+pub enum ParseOutcome {
+    /// Successfully extracted documents.
+    Ok(Vec<IndexDocument>),
+    /// File extension not supported by this parser.
+    Unsupported {
+        /// The file path that was skipped.
+        filepath: String,
+        /// The file extension (or `None` if no extension).
+        extension: Option<String>,
+    },
+    /// Parser encountered an error.
+    Failed {
+        /// The file path that failed.
+        filepath: String,
+        /// Description of the failure.
+        reason: String,
+    },
+}
+
+// ---------------------------------------------------------------------------
 // Internal index types
 // ---------------------------------------------------------------------------
 

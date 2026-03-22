@@ -41,6 +41,7 @@
             cargo-deny     # dependency audit
             cargo-insta    # snapshot testing
             cargo-machete  # unused dependency detection
+            cargo-modules  # module structure visualization
             just           # task runner
             prek           # git hooks
             typos          # spell checker

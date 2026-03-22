@@ -34,6 +34,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Doc
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+      - name: Unused dependencies
+        run: |
+          cargo install cargo-machete --locked
+          cargo machete
       - name: Typos
         uses: crate-ci/typos@631208b7aac2daa8b707f55e7331f9112b0e062d # v1.29.10
 
