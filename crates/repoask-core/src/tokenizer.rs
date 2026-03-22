@@ -1,4 +1,10 @@
+use std::cell::RefCell;
+
 use rust_stemmers::{Algorithm, Stemmer};
+
+thread_local! {
+    static STEMMER: RefCell<Stemmer> = RefCell::new(Stemmer::create(Algorithm::English));
+}
 
 /// Split a code identifier into lowercase tokens.
 ///
@@ -44,28 +50,29 @@ pub fn split_identifier(name: &str) -> Vec<String> {
     tokens
 }
 
+/// Stem a sequence of lowercase tokens using the shared stemmer.
+fn stem_tokens(tokens: impl Iterator<Item = String>) -> Vec<String> {
+    STEMMER.with(|s| {
+        let stemmer = s.borrow();
+        tokens
+            .filter(|t| t.len() > 1)
+            .map(|t| stemmer.stem(&t).to_string())
+            .collect()
+    })
+}
+
 /// Tokenize natural language text into lowercase stemmed tokens.
 pub fn tokenize_text(text: &str) -> Vec<String> {
-    let stemmer = Stemmer::create(Algorithm::English);
-
-    text.split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter(|w| w.len() > 1 && w.len() < 80)
-        .map(|w| {
-            let lower = w.to_lowercase();
-            stemmer.stem(&lower).to_string()
-        })
-        .collect()
+    let words = text
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|w| w.len() < 80)
+        .map(|w| w.to_lowercase());
+    stem_tokens(words)
 }
 
 /// Tokenize a code identifier: split then stem each part.
 pub fn tokenize_identifier(name: &str) -> Vec<String> {
-    let stemmer = Stemmer::create(Algorithm::English);
-
-    split_identifier(name)
-        .into_iter()
-        .filter(|t| t.len() > 1)
-        .map(|t| stemmer.stem(&t).to_string())
-        .collect()
+    stem_tokens(split_identifier(name).into_iter())
 }
 
 /// Tokenize a query string (same pipeline as text, for consistent matching).
@@ -145,11 +152,15 @@ mod tests {
     fn test_tokenize_text() {
         let tokens = tokenize_text("middleware authentication setup");
         assert_eq!(tokens.len(), 3);
-        // All should be stemmed
-        assert!(
-            tokens.contains(&"middleware".to_string())
-                || tokens.contains(&"middleware".to_string())
-        );
+        // Each token should be the Porter-stemmed form of the input word
+        let stemmer = Stemmer::create(Algorithm::English);
+        for word in ["middleware", "authentication", "setup"] {
+            let expected = stemmer.stem(&word.to_lowercase()).to_string();
+            assert!(
+                tokens.contains(&expected),
+                "expected stemmed form {expected:?} of {word:?} in {tokens:?}"
+            );
+        }
     }
 
     // -----------------------------------------------------------------------

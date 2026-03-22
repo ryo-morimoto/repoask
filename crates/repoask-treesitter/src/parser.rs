@@ -1,21 +1,30 @@
 //! Core tree-sitter symbol extraction logic.
 
+use std::cell::RefCell;
+
 use repoask_core::types::{Symbol, SymbolKind};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator};
 
+thread_local! {
+    static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
+}
+
 /// Extract symbols from source code using tree-sitter with a language-specific query.
-pub fn extract_symbols(
+pub(crate) fn extract_symbols(
     source: &str,
     filepath: &str,
     language: &Language,
     query_source: &str,
 ) -> Vec<Symbol> {
-    let mut parser = Parser::new();
-    if parser.set_language(language).is_err() {
-        return vec![];
-    }
+    let tree = PARSER.with(|p| {
+        let mut parser = p.borrow_mut();
+        if parser.set_language(language).is_err() {
+            return None;
+        }
+        parser.parse(source, None)
+    });
 
-    let tree = match parser.parse(source, None) {
+    let tree = match tree {
         Some(t) => t,
         None => return vec![],
     };
