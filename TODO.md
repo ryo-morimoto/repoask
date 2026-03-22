@@ -23,13 +23,13 @@
 ### ディスク消費
 
 - [ ] **キャッシュサイズ制限なし。** 多数のリポジトリを検索すると clone + index でディスクが無制限に消費される。LRU eviction や合計サイズ上限がない
-- [ ] **`clone_fresh` の tmp ディレクトリが PID ベースの命名。** PID リサイクルで古い tmp が残っている場合、同じ名前で衝突する可能性。UUID を使うか、作成前にクリーンアップを確実にすべき（現状クリーンアップはあるが `remove_dir_all` の失敗は黙殺される）
+- [x] ~~**`clone_fresh` の tmp ディレクトリが PID ベースの命名。**~~ → ナノ秒タイムスタンプに変更済み。rename 失敗時の tmp cleanup も追加済み
 
 ## パフォーマンス
 
 ### 検索 (hot path)
 
-- [ ] **`index.rs:194-198` — `doc_freq` が検索時に毎回 `HashSet` 生成で計算される。** postings リスト長ではなくユニークな doc_id 数が必要だが、これをインデックス構築時に事前計算して `HashMap<String, u32>` としてキャッシュすべき。現状は O(postings_per_term) の追加コスト
+- [x] ~~**`index.rs:194-198` — `doc_freq` が検索時に毎回 `HashSet` 生成で計算される。**~~ → `doc_freqs: HashMap<String, u32>` をインデックス構築時に事前計算して O(1) lookup に変更済み
 - [x] ~~**`index.rs:215-216` — 全スコア付きドキュメントをフルソートしてから truncate。**~~ → `BinaryHeap` + `ScoredDoc` による O(n log k) top-k 選択に置換済み
 - [ ] **`index.rs:187` — `HashMap<DocId, f32>` が検索ごとに新規生成される。** 構造体にキャッシュして `clear()` で再利用するか、事前確保すべき（`search` が `&self` のため `&mut self` 変更 or `RefCell` が必要、API変更を伴う）
 - [x] ~~**`bm25.rs:25-27` — `weights[field_id as usize]` に bounds check が入る。**~~ → `get().copied().unwrap_or(0.0)` に変更済み
@@ -45,7 +45,7 @@
 ### メモリ
 
 - [ ] **`InvertedIndex` — postings が `HashMap<String, Vec<Posting>>` で String キーの heap 確保が多い。** 数万シンボル規模では問題にならないが、10万超では `Vec<(TermId, Vec<Posting>)>` + 別途 `String → TermId` マップに分離した方がメモリ効率が良い
-- [ ] **`field_lengths` — `u16` で表現。** 65535 トークンを超えるフィールド長が黙って切り捨てられる。大きな markdown ドキュメントの `content` フィールドで発生し得る。`u32` に変更するか、飽和加算 (`saturating_cast`) を明示すべき
+- [x] ~~**`field_lengths` — `u16` で表現。**~~ → `.len().min(u16::MAX as usize) as u16` で飽和キャストに変更済み
 - [ ] **`StoredDoc::Doc.content_preview` — 200文字の preview が全ドキュメントに保存される。** インデックスのシリアライズサイズを膨らませる。検索時にファイルから読み直す方式なら不要
 - [ ] **`index.rs:47` — `InvertedIndex::build()` が `docs: Vec<IndexDocument>` を値渡しで受け取る。** 呼び出し元の `parse_directory` が `Vec` を構築 → `build` に move → index 構築中に `doc` の内容を clone して `StoredDoc` に格納。`&[IndexDocument]` のスライス参照で受け取ればドキュメント本体のコピーを減らせる
 
@@ -154,7 +154,7 @@ L4:   git 具体 → git 抽象          (platform-specific)
 
 ## BM25 / 検索品質
 
-- [ ] `doc_freq` の計算が `search()` 呼び出しごとに `HashSet` を生成している — 事前計算してキャッシュすべき
+- [x] ~~`doc_freq` の計算が `search()` 呼び出しごとに `HashSet` を生成している~~ → `doc_freqs` フィールドに事前計算済み
 - [ ] `node_type_boost` (probe のランキング手法) を未実装 — `function > class > enum > const` の重み付け
 - [ ] クエリの全トークンがヒットしたドキュメントを優先する `coverage_boost` を未実装
 - [ ] ストップワード除去なし — "the", "a", "is" 等がインデックスを膨らませている
@@ -165,13 +165,13 @@ L4:   git 具体 → git 抽象          (platform-specific)
 - [x] ~~`IndexMeta` (commit hash, format version, timestamp)~~ → `index_store.rs` で実装済み
 - [x] ~~`repo.rs` の `load_or_build_index()` 内で `unwrap_or(Path::new(""))` を使用~~ → `if let Some(parent)` パターンに修正済み
 - [ ] `clone.rs` の atomic rename (`std::fs::rename`) はクロスファイルシステムで失敗する — `/tmp` とホームディレクトリが別パーティションのケース
-- [ ] `clone.rs` で clone 失敗時の tmp ディレクトリ cleanup が `let _ =` で無視されている
-- [ ] `repo.rs` のファイルロック解放が `let _ = lock_file.unlock()` で明示的にされているが、`Drop` で十分 — 冗長コード
+- [x] ~~`clone.rs` で clone 失敗時の tmp ディレクトリ cleanup が `let _ =` で無視されている~~ → rename 失敗時にも tmp cleanup を追加済み
+- [x] ~~`repo.rs` のファイルロック解放が `let _ = lock_file.unlock()` で明示的にされているが、`Drop` で十分~~ → `drop(lock_file)` に変更済み
 - [x] ~~CLI の `main.rs` で `eprintln!` を直接使っている~~ → `#![allow(clippy::print_stderr, reason = "CLI binary")]` で許可済み
 - [ ] CLI に `--dir` / `--ext` / `--type` フィルタオプションが未実装 (仕様 S2)
 - [ ] CLI に `extract` サブコマンドが未実装 (仕様 S1)
 - [ ] CLI に `overview` サブコマンドが未実装 (仕様 S6)
-- [ ] `search` の text 出力で snippet が80文字で切られるが、マルチバイト文字で壊れる可能性
+- [x] ~~`search` の text 出力で snippet が80文字で切られるが、マルチバイト文字で壊れる可能性~~ → `.chars().take(80)` で文字単位切り出し済み。バイト切断ではないためマルチバイト安全
 - [ ] キャッシュの staleness チェックがコミットハッシュ一致のみ — 時間ベースの invalidation (`IndexMeta.is_stale()`) が未実装
 
 ## テスト
