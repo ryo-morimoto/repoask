@@ -38,6 +38,8 @@ enum StoredDoc {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvertedIndex {
     postings: HashMap<String, Vec<Posting>>,
+    /// Pre-computed document frequency per term (unique doc_id count).
+    doc_freqs: HashMap<String, u32>,
     documents: Vec<StoredDoc>,
     field_lengths: Vec<[u16; NUM_FIELDS]>,
     field_stats: [FieldStats; NUM_FIELDS],
@@ -72,6 +74,7 @@ impl InvertedIndex {
     pub fn build(docs: Vec<IndexDocument>) -> Self {
         let mut index = Self {
             postings: HashMap::new(),
+            doc_freqs: HashMap::new(),
             documents: Vec::with_capacity(docs.len()),
             field_lengths: Vec::with_capacity(docs.len()),
             field_stats: std::array::from_fn(|_| FieldStats {
@@ -83,6 +86,15 @@ impl InvertedIndex {
         let mut term_freq_buf = HashMap::new();
         for doc in docs {
             index.add_document(doc, &mut term_freq_buf);
+        }
+
+        // Pre-compute document frequencies (unique doc_id count per term)
+        for (term, postings) in &index.postings {
+            let mut seen = std::collections::HashSet::new();
+            for p in postings {
+                seen.insert(p.doc_id);
+            }
+            index.doc_freqs.insert(term.clone(), seen.len() as u32);
         }
 
         index
@@ -221,11 +233,7 @@ impl InvertedIndex {
                 continue;
             };
 
-            let doc_freq = postings
-                .iter()
-                .map(|p| p.doc_id)
-                .collect::<std::collections::HashSet<_>>()
-                .len() as u32;
+            let doc_freq = self.doc_freqs.get(token.as_str()).copied().unwrap_or(0);
 
             for posting in postings {
                 let field_length =
