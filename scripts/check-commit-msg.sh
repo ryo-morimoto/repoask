@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MSG_FILE="$1"
+# Support both: direct invocation with $1 (git hook) and prek (no args, read COMMIT_EDITMSG)
+MSG_FILE="${1:-.git/COMMIT_EDITMSG}"
 MSG=$(head -1 "$MSG_FILE")
 
 # Conventional Commits: type(scope)?: description
