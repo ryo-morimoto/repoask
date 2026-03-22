@@ -1,0 +1,24 @@
+---
+source: crates/repoask-core/src/index.rs
+expression: results
+---
+[
+  {
+    "Doc": {
+      "filepath": "docs/auth.md",
+      "section": "Authentication",
+      "snippet": "JWT token validation guide",
+      "score": 6.2502913
+    }
+  },
+  {
+    "Code": {
+      "filepath": "src/auth.rs",
+      "name": "validateToken",
+      "kind": "Function",
+      "start_line": 1,
+      "end_line": 10,
+      "score": 3.1215336
+    }
+  }
+]
