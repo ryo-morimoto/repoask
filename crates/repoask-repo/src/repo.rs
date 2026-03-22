@@ -70,11 +70,9 @@ pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>
         .open(&lock_path)?;
     lock_file.lock_exclusive()?;
 
-    // Try loading cached index
+    // Try loading cached index (lock released on drop)
     let index = load_or_build_index(owner, repo, ref_spec)?;
-
-    // Unlock (dropped automatically, but explicit for clarity)
-    let _ = lock_file.unlock();
+    drop(lock_file);
 
     Ok(index.search(query, limit))
 }
