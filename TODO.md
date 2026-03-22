@@ -35,10 +35,20 @@
 - [ ] クエリの全トークンがヒットしたドキュメントを優先する `coverage_boost` を未実装
 - [ ] ストップワード除去なし — "the", "a", "is" 等がインデックスを膨らませている
 
-## インデックス永続化
+## repoask-repo / CLI
 
-- [ ] `InvertedIndex` に `Serialize`/`Deserialize` derive はあるが、bincode でのファイル保存/読み込みロジックが未実装
-- [ ] `IndexMeta` (commit hash, format version, timestamp) が未定義 — キャッシュ互換性チェックに必要
+- [x] ~~`InvertedIndex` の bincode ファイル保存/読み込みロジック~~ → `index_store.rs` で実装済み
+- [x] ~~`IndexMeta` (commit hash, format version, timestamp)~~ → `index_store.rs` で実装済み
+- [ ] `repo.rs` の `load_or_build_index()` 内で `unwrap_or(Path::new(""))` を使用 — `parent()` が `None` になるケースの適切なハンドリング
+- [ ] `clone.rs` の atomic rename (`std::fs::rename`) はクロスファイルシステムで失敗する — `/tmp` とホームディレクトリが別パーティションのケース
+- [ ] `clone.rs` で clone 失敗時の tmp ディレクトリ cleanup が `let _ =` で無視されている
+- [ ] `repo.rs` のファイルロック解放が `let _ = lock_file.unlock()` で明示的にされているが、`Drop` で十分 — 冗長コード
+- [ ] CLI の `main.rs` で `eprintln!` を直接使っている — `print_stderr` lint が deny に設定されているため、`std::io::Write` 経由に統一すべき
+- [ ] CLI に `--dir` / `--ext` / `--type` フィルタオプションが未実装 (仕様 S2)
+- [ ] CLI に `extract` サブコマンドが未実装 (仕様 S1)
+- [ ] CLI に `overview` サブコマンドが未実装 (仕様 S6)
+- [ ] `search` の text 出力で snippet が80文字で切られるが、マルチバイト文字で壊れる可能性
+- [ ] キャッシュの staleness チェックがコミットハッシュ一致のみ — 時間ベースの invalidation (`IndexMeta.is_stale()`) が未実装
 
 ## テスト
 
@@ -46,11 +56,11 @@
 - [ ] tree-sitter の Java / C / C++ / Ruby のテストが未作成
 - [ ] 大規模ファイル (10,000行超) でのパフォーマンステストなし
 - [ ] BM25 のランキング品質テスト — 期待する順序で結果が返るか検証するテストが不足
+- [ ] `index_store` の save/load ラウンドトリップテストが未作成
+- [ ] `clone.rs` / `repo.rs` のテストは repo spec パースのみ — clone 自体のテストはネットワーク依存で未作成
 
-## 未実装の crate (Step 2 以降)
+## 未実装の crate (Step 3 以降)
 
-- [ ] `repoask-repo`: git clone, キャッシュ管理, cleanup
-- [ ] `repoask-cli`: clap CLI, JSON lines 出力, search/extract/overview/cleanup サブコマンド
 - [ ] `repoask-wasm`: wasm-bindgen エントリポイント
 - [ ] `repoask-node`: napi-rs npm 配布
 - [ ] `SKILL.md`: agent skill 定義ファイル
