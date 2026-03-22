@@ -4,13 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "poc": "npx tsx src/poc.ts"
+    "poc": "npx tsx src/poc.ts",
+    "dev": "vite",
+    "build:wasm": "cd ../.. && nix develop --command wasm-pack build wasm --target web --out-dir pkg"
   },
   "dependencies": {
-    "@mizchi/bit": "file:/tmp/bit-clone/npm"
+    "@mizchi/bit": "file:/tmp/bit-clone/npm",
+    "repoask-wasm": "file:../../wasm/pkg"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-wasm": "^3.4.1"
   }
 }

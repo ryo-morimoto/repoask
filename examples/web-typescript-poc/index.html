@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>repoask PoC</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 2rem; background: #0d1117; color: #c9d1d9; }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; color: #58a6ff; }
+    .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    input, button { font-size: 0.9rem; padding: 0.5rem 0.75rem; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #c9d1d9; }
+    input { flex: 1; }
+    input:focus { outline: none; border-color: #58a6ff; }
+    button { cursor: pointer; background: #21262d; white-space: nowrap; }
+    button:hover { background: #30363d; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primary { background: #238636; border-color: #238636; color: #fff; }
+    button.primary:hover { background: #2ea043; }
+    #status { font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem; min-height: 1.2rem; }
+    #search-box { display: none; margin-bottom: 1rem; }
+    #search-box.visible { display: flex; }
+    .result { border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; background: #161b22; }
+    .result-type { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; margin-right: 0.5rem; }
+    .result-type.code { background: #1f6feb33; color: #58a6ff; }
+    .result-type.doc { background: #23863633; color: #3fb950; }
+    .result-type.example { background: #a371f733; color: #bc8cff; }
+    .result-path { font-size: 0.85rem; color: #8b949e; }
+    .result-name { font-weight: 600; }
+    .result-snippet { font-size: 0.85rem; color: #8b949e; margin-top: 0.25rem; white-space: pre-wrap; overflow: hidden; max-height: 3rem; }
+    .result-score { font-size: 0.75rem; color: #484f58; float: right; }
+    .result-lines { font-size: 0.75rem; color: #484f58; }
+    #results { margin-top: 0.5rem; }
+    .stats { font-size: 0.8rem; color: #484f58; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>repoask PoC</h1>
+
+  <div class="controls">
+    <input id="repo-input" type="text" placeholder="owner/repo (e.g. colinhacks/zod)" value="colinhacks/zod" />
+    <button id="load-btn" class="primary">Load</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div id="search-box" class="controls">
+    <input id="query-input" type="text" placeholder="Search query..." />
+    <button id="search-btn">Search</button>
+  </div>
+
+  <div id="results"></div>
+
+  <script type="module" src="/src/demo.ts"></script>
+</body>
+</html>
