@@ -110,13 +110,15 @@ impl InvertedIndex {
 
                 // Field 0: symbol name tokens
                 let name_tokens = tokenize_identifier(&symbol.name);
-                lengths[FIELD_SYMBOL_NAME as usize] = name_tokens.len() as u16;
+                lengths[FIELD_SYMBOL_NAME as usize] =
+                    name_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &name_tokens, term_freq_buf);
 
                 // Field 1: doc comment tokens
                 if let Some(ref comment) = symbol.doc_comment {
                     let comment_tokens = tokenize_text(comment);
-                    lengths[FIELD_DOC_CONTENT as usize] = comment_tokens.len() as u16;
+                    lengths[FIELD_DOC_CONTENT as usize] =
+                        comment_tokens.len().min(u16::MAX as usize) as u16;
                     self.add_field_tokens(
                         doc_id,
                         FIELD_DOC_CONTENT,
@@ -131,12 +133,12 @@ impl InvertedIndex {
                     .iter()
                     .flat_map(|p| tokenize_identifier(p))
                     .collect();
-                lengths[FIELD_PARAMS as usize] = param_tokens.len() as u16;
+                lengths[FIELD_PARAMS as usize] = param_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_PARAMS, &param_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&symbol.filepath);
-                lengths[FIELD_FILEPATH as usize] = path_tokens.len() as u16;
+                lengths[FIELD_FILEPATH as usize] = path_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 self.documents.push(StoredDoc::Code {
@@ -154,12 +156,14 @@ impl InvertedIndex {
                 for ancestor in &section.heading_hierarchy {
                     heading_tokens.extend(tokenize_text(ancestor));
                 }
-                lengths[FIELD_SYMBOL_NAME as usize] = heading_tokens.len() as u16;
+                lengths[FIELD_SYMBOL_NAME as usize] =
+                    heading_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &heading_tokens, term_freq_buf);
 
                 // Field 1: body content tokens
                 let body_tokens = tokenize_text(&section.content);
-                lengths[FIELD_DOC_CONTENT as usize] = body_tokens.len() as u16;
+                lengths[FIELD_DOC_CONTENT as usize] =
+                    body_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_DOC_CONTENT, &body_tokens, term_freq_buf);
 
                 // Field 2: code symbols extracted from fenced blocks
@@ -168,12 +172,13 @@ impl InvertedIndex {
                     .iter()
                     .flat_map(|s| tokenize_identifier(s))
                     .collect();
-                lengths[FIELD_PARAMS as usize] = code_sym_tokens.len() as u16;
+                lengths[FIELD_PARAMS as usize] =
+                    code_sym_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_PARAMS, &code_sym_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&section.filepath);
-                lengths[FIELD_FILEPATH as usize] = path_tokens.len() as u16;
+                lengths[FIELD_FILEPATH as usize] = path_tokens.len().min(u16::MAX as usize) as u16;
                 self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 let preview = section.content.chars().take(200).collect::<String>();
