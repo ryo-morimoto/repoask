@@ -7,21 +7,25 @@ const B: f32 = 0.75;
 /// Index: FIELD_SYMBOL_NAME=0, FIELD_DOC_CONTENT=1, FIELD_PARAMS=2, FIELD_FILEPATH=3
 const DEFAULT_WEIGHTS: [f32; NUM_FIELDS] = [4.0, 2.0, 1.5, 1.0];
 
+/// BM25 scorer with per-field weight support.
 pub struct Bm25Scorer {
     weights: [f32; NUM_FIELDS],
 }
 
 impl Bm25Scorer {
+    /// Create a scorer with default field weights.
     pub fn new() -> Self {
         Self {
             weights: DEFAULT_WEIGHTS,
         }
     }
 
+    /// Create a scorer with custom field weights.
     pub fn with_weights(weights: [f32; NUM_FIELDS]) -> Self {
         Self { weights }
     }
 
+    /// Return the weight multiplier for the given field.
     pub fn weight(&self, field_id: FieldId) -> f32 {
         self.weights.get(field_id as usize).copied().unwrap_or(0.0)
     }

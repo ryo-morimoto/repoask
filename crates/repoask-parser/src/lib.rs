@@ -3,7 +3,9 @@
 //! Handles TS/JS (via oxc) and Markdown. Pure Rust, WASM-compatible.
 //! For tree-sitter based languages (Rust, Python, Go, etc.), see `repoask-treesitter`.
 
+/// Markdown document parsing and section extraction.
 pub mod markdown;
+/// TypeScript/JavaScript symbol extraction via oxc-parser.
 pub mod oxc;
 
 use repoask_core::types::IndexDocument;

@@ -11,29 +11,44 @@ use crate::types::{CodeResult, DocResult, IndexDocument, SearchResult};
 // Index internal types
 // ---------------------------------------------------------------------------
 
+/// Numeric identifier for an indexed document.
 pub type DocId = u32;
+/// Numeric identifier for a field within a document.
 pub type FieldId = u8;
 
+/// Field index for symbol name or section heading.
 pub const FIELD_SYMBOL_NAME: FieldId = 0;
+/// Field index for doc comment or section body content.
 pub const FIELD_DOC_CONTENT: FieldId = 1;
+/// Field index for parameter names or code symbols in docs.
 pub const FIELD_PARAMS: FieldId = 2;
+/// Field index for the file path.
 pub const FIELD_FILEPATH: FieldId = 3;
+/// Total number of indexed fields per document.
 pub const NUM_FIELDS: usize = 4;
 
+/// A single term occurrence record in the inverted index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Posting {
+    /// The document containing this term.
     pub doc_id: DocId,
+    /// The field in which the term appears.
     pub field_id: FieldId,
+    /// How many times the term appears in this field.
     pub term_freq: u16,
 }
 
+/// Aggregate statistics for a single field across all documents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldStats {
+    /// Sum of field lengths across all documents.
     pub total_length: u64,
+    /// Number of documents that have a non-empty value for this field.
     pub doc_count: u32,
 }
 
 impl FieldStats {
+    /// Return the average field length, or 0.0 if no documents exist.
     pub fn avg_length(&self) -> f32 {
         if self.doc_count == 0 {
             return 0.0;
@@ -67,6 +82,7 @@ enum StoredDoc {
 // Inverted index
 // ---------------------------------------------------------------------------
 
+/// BM25-backed inverted index over code symbols and documentation sections.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvertedIndex {
     postings: HashMap<String, Vec<Posting>>,
@@ -103,6 +119,7 @@ impl Ord for ScoredDoc {
 }
 
 impl InvertedIndex {
+    /// Build an index from a collection of parsed documents.
     pub fn build(docs: Vec<IndexDocument>) -> Self {
         let mut index = Self {
             postings: HashMap::new(),
@@ -255,6 +272,7 @@ impl InvertedIndex {
         }
     }
 
+    /// Search the index and return the top results ranked by BM25 score.
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
         let query_tokens = tokenize_query(query);
         if query_tokens.is_empty() {
@@ -341,6 +359,7 @@ impl InvertedIndex {
         }
     }
 
+    /// Return the total number of indexed documents.
     pub fn doc_count(&self) -> usize {
         self.documents.len()
     }
