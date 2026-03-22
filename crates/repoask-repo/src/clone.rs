@@ -100,16 +100,37 @@ fn clone_fresh(
         return Err(CloneError::GitFailed(stderr.to_string()));
     }
 
-    // Atomic move into place
+    // Move into place — try atomic rename first, fall back to recursive copy
+    // when source and destination are on different filesystems (EXDEV).
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if let Err(e) = std::fs::rename(&tmp_dir, target) {
+    if std::fs::rename(&tmp_dir, target).is_err() {
+        copy_dir_recursive(&tmp_dir, target).map_err(|e| {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            let _ = std::fs::remove_dir_all(target);
+            e
+        })?;
         let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(e.into());
     }
 
     Ok(target.to_path_buf())
+}
+
+/// Recursively copy a directory tree. Used as fallback when rename fails
+/// due to cross-filesystem boundaries (EXDEV).
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Get the current HEAD commit hash of a cloned repo.
