@@ -27,31 +27,52 @@ This serves two purposes:
 
 ## What
 
-`owner/repo` を渡すだけで、任意のGitHubリポジトリのコードとドキュメントに対して自然言語で検索できるツール。
+任意のリポジトリに対するコード理解ツール。
 
-Context7の体験をローカルで再現する。「このライブラリの認証ってどうやるの？」と聞いたら、README・docs・examples・実装コードを横断して答えが返ってくる。
+`owner/repo` を渡すだけで、コードとドキュメントに対して自然言語で検索でき、コールグラフ・型依存グラフで変更の影響範囲を追跡できる。
 
-CLIでもブラウザでも動く。外部サービス依存ゼロ。パフォーマンスで既存ツールを圧倒する。
+外部repoの使い方を調べるときも、自分のrepoをリファクタするときも、同じインターフェースで完結する。CLIでもブラウザでも動く。外部サービス依存ゼロ。
 
 ## Why
 
-coding agentが外部リポジトリを参照するとき、現状2つの不満がある:
+コードを理解するまでの待ち時間が長い。
 
-**Context7的なもの（ドキュメント検索）はクラウド依存で、対応ライブラリが限られる。**
-Context7は便利だが、インデックスされていないライブラリには使えない。
-任意の `owner/repo` に対してすぐ使えるローカル版が必要。
+- Context7はクラウド依存で、インデックスされていないライブラリには使えない
+- 既存のコード検索ツール（probe, code-graph-rag, GitNexus, Greptile）は遅いか依存が重い
+- `gh api` や `git clone` + `rg` は手順が多く、結果がコード理解に最適化されていない
 
-**既存のコード検索ツールは遅いか、依存が重い。**
-code-graph-rag → Docker + Memgraph + LLM API が必要、検索にLLM呼び出しで数秒。
-probe → インデックスなし毎回フルAST parse、検索に2-3秒。
-GitNexus → Node.js + KuzuDB、インデックス構築に数十秒。
-Greptile → SaaS、初回インデックスに数時間。
+repoaskは「任意のrepo、ローカル完結、速い」で解決する。
 
-repoaskは「インデックス構築3秒、検索100ms、外部依存ゼロ」で差別化する。
+## 誰が使うか
+
+- **開発者が外部repoの使い方を調べるとき** — docs, 公開API, 型, 実装例を横断検索
+- **開発者が自分のrepoをリファクタ・レビューするとき** — 影響範囲、依存関係、モジュール構造を把握
+- **coding agentが外部repoを参照するとき** — 1コマンドで構造化された結果を取得
 
 ## Core Concept
 
-**agentは `owner/repo` と自然言語のクエリだけ渡す。それ以外は全部ツールがやる。**
+### 3つの入口
+
+```
+repoask search  owner/repo "query"    # 汎用検索（どのrepoでも）
+repoask explore owner/repo "query"    # 使い方を知る（外部repo向け）
+repoask trace   owner/repo file/sym   # 影響範囲を追う（自分のrepo向け）
+```
+
+**search** — 汎用キーワード検索。BM25 + ASTシンボル検索。コードとドキュメントを横断してヒットする。
+
+**explore** — 外部repoの仕様理解。docs → 公開API → 型 → 実装例 → 内部実装の順に上から下へ潜る。Context7のコード特化版。
+
+**trace** — 自分のrepoの影響範囲追跡。変更点 → 依存先 → 依存元 → 影響範囲の順に中心から外へ広がる。コールグラフ + 型依存グラフが基盤。
+
+### 2つの価値層
+
+| 層 | 問い | 機能 | データ |
+|---|---|---|---|
+| **検索** | 「これ何？どう使う？」 | BM25 + ASTシンボル検索 | shallow clone |
+| **理解** | 「変えたらどうなる？」 | コールグラフ + 型依存グラフ | full clone |
+
+### 出力例
 
 ```
 repoask search vercel/next.js "middleware authentication"
@@ -62,7 +83,28 @@ repoask search vercel/next.js "middleware authentication"
   ]
 ```
 
-ドキュメント・コード・exampleが1つのクエリで横断的にヒットする。
+## 設計原則
+
+### 1. コマンドがデータ要件を決める
+
+ルーティングロジック不要。各コマンドが必要とするデータレベルは静的に決まる。
+
+- `search` / `explore` → shallow clone（`--depth 1`）で十分。ファイル内容は全部あるのでAST解析も可能。履歴がないだけ。
+- `trace` → full cloneが必要。コミット履歴、`git log`、`git blame` が使える。なければ自動でfetchする。
+
+### 2. 足りなければ勝手に取る
+
+ユーザーはデータレベルを意識しない。コマンドを叩いたら、足りないデータがあれば裏で取得される。キャッシュがあればスキップ。
+
+```
+repoask search vercel/next.js "middleware"   # 初回: shallow clone（数秒）
+repoask search vercel/next.js "routing"      # キャッシュヒット（0.1秒）
+repoask trace vercel/next.js src/server/...  # full cloneに自動昇格（追加数秒、以降キャッシュ）
+```
+
+### 3. データが増えると結果がリッチになる
+
+同じインターフェース、同じクエリでも、キャッシュにあるデータが増えた分だけ出力が豊かになる。full clone済みなら関連ファイルのパスと重みが追加される。重みが高ければプレビューも展開される。
 
 ## 配布形態と優先度
 
@@ -146,6 +188,12 @@ repoask search vercel/next.js "middleware authentication"
 - CLIはnativeバイナリ、Webは同一コードのWASMビルド
 - Webではブラウザ内で完結する。サーバーサイド不要
 
+### M10: コールグラフ・型依存グラフの構築と走査
+
+- AST解析から関数呼び出し関係、型の参照関係を抽出してグラフ構築
+- `trace` コマンドの基盤。変更起点から影響範囲を自動で展開
+- full clone時に構築。shallow clone時はスキップ
+
 ## 技術選定
 
 ### 言語: Rust
@@ -184,7 +232,8 @@ parse結果は共通の中間表現（シンボルリスト）に変換してか
 
 | 環境 | 手段 |
 |---|---|
-| CLI | `git clone --depth 1` (subprocess) |
+| CLI (search/explore) | `git clone --depth 1` (subprocess) |
+| CLI (trace) | `git clone` (full、または既存shallow cloneを `git fetch --unshallow` で昇格) |
 | Web | GitHub tarball API (`/repos/{owner}/{repo}/tarball/{ref}`) or bit (MoonBit WASM git) |
 
 WebでのGit cloneはCORS制約があるため、GitHub APIのtarball取得が現実的。
@@ -247,7 +296,7 @@ napi-rsでRustバイナリをnpmパッケージとして配布。
 Human: "Supabaseの認証をNext.jsで使うにはどうすればいい？"
 
 Agent:
-  1. repoask search supabase/auth-js "authentication setup nextjs"
+  1. repoask explore supabase/auth-js "authentication setup nextjs"
      → [doc] README.md#quick-start: "Install @supabase/auth-js..."
      → [doc] docs/guides/nextjs.md#middleware: "Create middleware for session refresh..."
      → [example] examples/nextjs/middleware.ts: createMiddleware()
@@ -274,6 +323,23 @@ Agent:
   3. 構造を説明
 ```
 
+### リファクタ前の影響範囲調査
+
+```
+Human: "UserSession型を変更したい。影響範囲は？"
+
+Agent:
+  1. repoask trace my-repo src/types/session.ts#UserSession
+     → 定義: src/types/session.ts:15
+     → 参照: 23箇所
+     → 生成: src/auth/login.ts, src/auth/refresh.ts
+     → 消費: src/api/*, src/middleware/*
+     → 変更影響スコア: high
+
+  2. 影響範囲の全容をユーザーに提示
+  3. 必要に応じて repoask extract で各参照箇所を確認
+```
+
 ### 未知のリポジトリの初期調査
 
 ```
@@ -291,19 +357,22 @@ Agent:
 
 ## 既存ツールとの差別化
 
-| | repoask | code-graph-rag | probe | Context7 | GitNexus |
-|---|---|---|---|---|---|
-| セットアップ | **0依存** | Docker+Memgraph+LLM | cargo install | クラウド | npx |
-| インデックス構築 | **<3s** | 数分 | なし(毎回parse) | サーバー側 | 数十秒 |
-| 検索速度 | **<100ms** | 数秒(LLM) | 2-3s | ネットワーク依存 | 数百ms |
-| Web動作 | **✓ WASM** | ✗ | ✗ | ✓(SaaS) | ✓(WASM) |
-| owner/repo直指定 | **✓** | ✗ | ✗ | ✓ | ✓(Web) |
-| ドキュメント検索 | **✓** | ✗ | ✗ | ✓ | ✗ |
-| LLM不要 | **✓** | ✗ | ✓ | ✗ | ✗ |
-| グラフ走査 | ✗ | ✓ | ✗ | ✗ | ✓ |
+| | repoask | ast-grep | code-graph-rag | probe | Context7 | GitNexus |
+|---|---|---|---|---|---|---|
+| セットアップ | **0依存** | cargo install | Docker+Memgraph+LLM | cargo install | クラウド | npx |
+| インデックス構築 | **<3s** | なし | 数分 | なし(毎回parse) | サーバー側 | 数十秒 |
+| 検索速度 | **<100ms** | <100ms | 数秒(LLM) | 2-3s | ネットワーク依存 | 数百ms |
+| 入力 | **自然言語** | ASTパターン | 自然言語(LLM) | 自然言語(LLM) | 自然言語 | 自然言語 |
+| Web動作 | **✓ WASM** | ✗ | ✗ | ✗ | ✓(SaaS) | ✓(WASM) |
+| owner/repo直指定 | **✓** | ✗ | ✗ | ✗ | ✓ | ✓(Web) |
+| ドキュメント検索 | **✓** | ✗ | ✗ | ✗ | ✓ | ✗ |
+| LLM不要 | **✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
+| グラフ走査 | **✓** | ✗ | ✓ | ✗ | ✗ | ✓ |
+| リファクタ実行 | ✗ | **✓(--rewrite)** | ✗ | ✗ | ✗ | ✗ |
 
-repoaskの立ち位置: **速度とゼロ依存に全振りした、ローカルファーストのコード+ドキュメント検索。**
-グラフ走査（CALLS関係、blast radius分析）はスコープ外。そこが必要ならGitNexusやcode-graph-ragを使う。
+repoaskの立ち位置: **速度とゼロ依存に全振りした、ローカルファーストのコード理解ツール。**
+検索（search/explore）からグラフ走査（trace）まで、同じインターフェースでカバーする。
+ast-grepは構文パターンを正確に知っている場合の精密検索・書き換えに強く、補完関係にある。
 
 ## 非スコープ
 
@@ -311,5 +380,4 @@ repoaskの立ち位置: **速度とゼロ依存に全振りした、ローカル
 - プライベートリポジトリ対応（初期バージョンでは公開repoのみ）
 - リアルタイムのファイルウォッチ（静的なスナップショットインデックス）
 - embedding / LLM呼び出しによるセマンティック検索
-- ナレッジグラフ / コールグラフ走査
 - MCP Server（必要になったら対応）

@@ -33,6 +33,20 @@ enum Commands {
         #[arg(short, long, default_value = "json")]
         format: OutputFormat,
     },
+    /// Understand how to use an external repository (docs, public APIs, types, examples).
+    Explore {
+        /// Repository in `owner/repo` format (optionally `owner/repo@ref`).
+        repo_spec: String,
+        /// Search query (natural language).
+        query: String,
+    },
+    /// Trace impact of changes (call graphs, type dependencies, affected files).
+    Trace {
+        /// Repository in `owner/repo` format (optionally `owner/repo@ref`).
+        repo_spec: String,
+        /// File path or symbol to trace (e.g. `src/auth/session.ts#UserSession`).
+        target: String,
+    },
     /// Remove cached data.
     Cleanup {
         /// Specific repository to clean (`owner/repo`). Omit to clean all.
@@ -52,24 +66,27 @@ enum OutputFormat {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Search {
             repo_spec,
             query,
             limit,
             format,
-        } => {
-            if let Err(e) = run_search(&repo_spec, &query, limit, &format) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+        } => run_search(&repo_spec, &query, limit, &format),
+        Commands::Explore { .. } => {
+            eprintln!("repoask explore is not yet implemented. Coming soon.");
+            std::process::exit(1);
         }
-        Commands::Cleanup { repo_spec } => {
-            if let Err(e) = run_cleanup(repo_spec.as_deref()) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+        Commands::Trace { .. } => {
+            eprintln!("repoask trace is not yet implemented. Coming soon.");
+            std::process::exit(1);
         }
+        Commands::Cleanup { repo_spec } => run_cleanup(repo_spec.as_deref()),
+    };
+
+    if let Err(e) = result {
+        eprintln!("error: {e}");
+        std::process::exit(1);
     }
 }
 
