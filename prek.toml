@@ -21,4 +21,5 @@ hooks = [
     { id = "cargo-clippy", name = "cargo clippy", entry = "cargo clippy --workspace --all-targets -- -D warnings", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
     { id = "cargo-nextest", name = "cargo nextest", entry = "cargo nextest run --workspace", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
     { id = "cargo-doc", name = "cargo doc", entry = "sh -c 'RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps'", language = "system", types = ["rust"], pass_filenames = false, stages = ["pre-push"] },
+    { id = "commit-msg-check", name = "conventional commits + english", entry = "scripts/check-commit-msg.sh", language = "system", always_run = true, pass_filenames = false, stages = ["commit-msg"] },
 ]
