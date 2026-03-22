@@ -1,8 +1,10 @@
 [package]
 name = "repoask-treesitter"
+description = "Tree-sitter multi-language parser for repoask"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

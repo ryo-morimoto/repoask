@@ -1,8 +1,10 @@
 [package]
 name = "repoask-parser"
+description = "TypeScript/JavaScript and Markdown parsers for repoask"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true
