@@ -30,17 +30,17 @@
 ### 検索 (hot path)
 
 - [ ] **`index.rs:194-198` — `doc_freq` が検索時に毎回 `HashSet` 生成で計算される。** postings リスト長ではなくユニークな doc_id 数が必要だが、これをインデックス構築時に事前計算して `HashMap<String, u32>` としてキャッシュすべき。現状は O(postings_per_term) の追加コスト
-- [ ] **`index.rs:215-216` — 全スコア付きドキュメントをフルソートしてから truncate。** top-k 選択に `BinaryHeap` を使えば O(n log k) に改善。k=10, n=数万の場合に差が出る
-- [ ] **`index.rs:187` — `HashMap<DocId, f32>` が検索ごとに新規生成される。** 構造体にキャッシュして `clear()` で再利用するか、事前確保すべき
-- [ ] **`bm25.rs:25-27` — `weights[field_id as usize]` に bounds check が入る。** `field_id` は `u8` で定数定義されているが、不正な値で panic する。`get()` + デフォルト値に変更すべき
+- [x] ~~**`index.rs:215-216` — 全スコア付きドキュメントをフルソートしてから truncate。**~~ → `BinaryHeap` + `ScoredDoc` による O(n log k) top-k 選択に置換済み
+- [ ] **`index.rs:187` — `HashMap<DocId, f32>` が検索ごとに新規生成される。** 構造体にキャッシュして `clear()` で再利用するか、事前確保すべき（`search` が `&self` のため `&mut self` 変更 or `RefCell` が必要、API変更を伴う）
+- [x] ~~**`bm25.rs:25-27` — `weights[field_id as usize]` に bounds check が入る。**~~ → `get().copied().unwrap_or(0.0)` に変更済み
 
 ### インデックス構築
 
-- [ ] **`tokenizer.rs:49,62` — `Stemmer::create()` が `tokenize_text` / `tokenize_identifier` 呼び出しごとに生成される。** Stemmer の内部構造は軽いが、数万回呼ばれると累積する。呼び出し元でインスタンスを使い回すか、`thread_local!` でキャッシュすべき
+- [x] ~~**`tokenizer.rs:49,62` — `Stemmer::create()` が `tokenize_text` / `tokenize_identifier` 呼び出しごとに生成される。**~~ → `thread_local!` で `Stemmer` をキャッシュ済み
 - [ ] **`parse_directory` — シングルスレッドでファイルを逐次処理。** `WalkBuilder::build_parallel()` + `crossbeam::channel` でファイルウォークとパースを並列化すれば、マルチコアで構築時間を大幅短縮可能。仕様の「3秒以内」を大規模リポジトリで達成するために必要
-- [ ] **`tree_sitter_parser.rs:11-14` — `Parser::new()` + `set_language()` がファイルごとに呼ばれる。** tree-sitter の Parser はステートフルなので再利用可能。言語ごとに Parser をプールすべき
+- [x] ~~**`tree_sitter_parser.rs:11-14` — `Parser::new()` + `set_language()` がファイルごとに呼ばれる。**~~ → `thread_local!` で `Parser` インスタンスを再利用済み
 - [ ] **`oxc.rs:309-354` — `extract_leading_comment` がシンボルごとにソース先頭から `offset` まで逆方向スキャンする。** 1 ファイルに 100 シンボルあれば 100 回スキャン。各スキャンは O(file_size)。oxc の `ret.comments` からコメント位置を事前取得して二分探索で対応付けすべき
-- [ ] **`index.rs:161-176` — `add_field_tokens` 内で `HashMap<&str, u16>` を毎フィールドで新規作成。** 構造体に持たせて `clear()` で再利用すべき
+- [x] ~~**`index.rs:161-176` — `add_field_tokens` 内で `HashMap<&str, u16>` を毎フィールドで新規作成。**~~ → `build()` で1つの `HashMap` を作り `add_field_tokens` に渡して `clear()` + `drain()` で再利用済み
 
 ### メモリ
 
@@ -53,7 +53,7 @@
 
 - [x] ~~**`parse_directory` — `read_to_string` はファイル全体をメモリに載せる。**~~ → 10MB 上限チェック追加済み（セキュリティ > 信頼境界と同一修正）
 - [ ] **`index_store::save_index` — `encode_to_vec` でバイト列全体をメモリに構築してから `write`。** 大きなインデックスでは `BufWriter` + streaming encode の方がメモリ効率が良い
-- [ ] **`clone.rs:79` — `cmd.output()` は git の stdout/stderr を全てメモリにバッファする。** 巨大リポジトリの clone で git が大量の progress 出力を生成した場合にメモリ消費が増える。`stdout(Stdio::null())` + `stderr(Stdio::piped())` にすべき
+- [x] ~~**`clone.rs:79` — `cmd.output()` は git の stdout/stderr を全てメモリにバッファする。**~~ → `stdout(Stdio::null())` + `stderr(Stdio::piped())` 追加済み
 
 ## Lint / コード品質
 
@@ -74,7 +74,7 @@ WASM サイズ肥大化を防ぎつつ、対応言語を段階的に拡張でき
 
 以下の既存課題をまとめて解決する:
 
-- [ ] **`ParseOutcome` / `ParseError` の重複を解消。** `repoask-parser` と `repoask-treesitter` で同一構造の enum が2箇所に存在。`repoask-core` に `ParseOutcome` を定義して両パーサーが再利用する
+- [x] ~~**`ParseOutcome` / `ParseError` の重複を解消。**~~ → `ParseOutcome` を `repoask-core::types` に定義、両パーサーが `pub use` で re-export する形に変更済み
 - [ ] **`parse_file_lenient` の戻り値型を統一。** repoask-parser は `Vec<IndexDocument>`、repoask-treesitter は `Option<Vec<IndexDocument>>`。シグネチャを揃える
 - [ ] **`ParseProvider` trait を `repoask-core` に定義。** `fn parse_file(&self, filepath, source) -> Result<Option<Vec<IndexDocument>>, ParseError>`
 - [ ] **`NativeParseProvider` を `repoask-repo` に実装。** 現在の `parse.rs` のディスパッチロジック (repoask-parser → repoask-treesitter fallback) を移植
@@ -206,6 +206,26 @@ L4:   git 具体 → git 抽象          (platform-specific)
 - [ ] JSON lines: 各行が独立したJSONオブジェクト (Output format に1文追記)
 
 ## ハーネス改善
+
+### similarity-rs 統合ロードマップ
+
+similarity-rs による重複検出。pre-commit で `--fail-on-duplicates` で常時ブロック。
+
+**現在**: threshold 0.96 (関数) / 0.99 (型)。pre-commit gate 有効。
+
+**解消済み**:
+- [x] ~~`oxc.rs` — `extract_from_statement` ↔ `extract_from_declaration` (98%)~~ → `Statement::as_declaration()` で委譲、`ExtractCtx` 構造体 + `ctx.push()` で Symbol 構築を統一
+- [x] ~~`tokenizer.rs` — `tokenize_text` ↔ `tokenize_identifier` (97%)~~ → 共通の `stem_tokens()` 内部関数に抽出
+- [x] ~~`ParseOutcome` 重複 (100%)~~ → `repoask-core::types` に移動、両パーサーが `pub use` で re-export
+
+**残存 (threshold 引き下げ時に対処)**:
+- [ ] **`CodeResult` ↔ `ExampleResult` (98%)。** フィールド完全一致。`ExampleResult` を除去して `CodeResult` に `is_example: bool` を追加する方針（モジュール/インターフェースセクション参照）。対処後 → 型 threshold 0.95 に引き下げ
+- [ ] **`oxc.rs` — `extract_from_var_decl` ↔ `extract_class_methods` (95%)。** AST パターンマッチ + ctx.push の構造的類似。ドメイン的に別処理なので無理な共通化は避ける。対処後 → 関数 threshold 0.90 に引き下げ
+- [ ] **`#[cfg(test)]` 内ヘルパー (`make_symbol`/`make_doc`, 94%)。** `--skip-test` が `test_` prefix / `#[test]` attr のみ対応で漏れる。similarity-rs の改善を待つか、テストヘルパーを別ファイルに切り出して `--exclude` する
+
+**FP 対策**: `--exclude benches` で bench コードを除外済み。
+
+**目標**: 段階的に threshold 0.80 まで引き下げ、より攻めた重複検出
 
 ### CI / CD
 
