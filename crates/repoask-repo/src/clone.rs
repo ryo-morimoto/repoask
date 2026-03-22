@@ -104,7 +104,10 @@ fn clone_fresh(
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::rename(&tmp_dir, target)?;
+    if let Err(e) = std::fs::rename(&tmp_dir, target) {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err(e.into());
+    }
 
     Ok(target.to_path_buf())
 }
