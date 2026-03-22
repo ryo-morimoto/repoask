@@ -1,5 +1,10 @@
 //! repoask CLI — search code and docs in any GitHub repository.
 
+#![allow(
+    clippy::print_stderr,
+    reason = "CLI binary uses stderr for user-facing messages"
+)]
+
 use clap::{Parser, Subcommand};
 use repoask_core::types::SearchResult;
 use repoask_repo::{cache, repo};

@@ -62,8 +62,8 @@ pub fn save_index(index: &InvertedIndex, path: &Path) -> Result<(), SaveError> {
 pub fn load_index(path: &Path) -> Result<InvertedIndex, LoadError> {
     let bytes = std::fs::read(path)?;
     let config = bincode::config::standard();
-    let (index, _) =
-        bincode::serde::decode_from_slice::<InvertedIndex, _>(&bytes, config).map_err(LoadError::Decode)?;
+    let (index, _) = bincode::serde::decode_from_slice::<InvertedIndex, _>(&bytes, config)
+        .map_err(LoadError::Decode)?;
     Ok(index)
 }
 

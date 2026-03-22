@@ -5,12 +5,26 @@ use std::path::Path;
 use ignore::WalkBuilder;
 use repoask_core::types::IndexDocument;
 
+/// Summary of skipped or failed files during directory parsing.
+#[derive(Debug, Default)]
+pub struct ParseReport {
+    /// Files whose extension is not supported by any parser.
+    pub unsupported: Vec<String>,
+    /// Files that a parser attempted but failed to extract from.
+    pub failed: Vec<(String, String)>,
+    /// Total files successfully parsed.
+    pub parsed_count: usize,
+}
+
 /// Parse all supported files in a directory and return index documents.
 ///
 /// Uses `repoask-parser` for TS/JS and Markdown, and `repoask-treesitter`
 /// for Rust, Python, Go, Java, C, C++, Ruby.
-pub fn parse_directory(root: &Path) -> Vec<IndexDocument> {
+///
+/// Returns both the documents and a report of what was skipped/failed.
+pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
     let mut documents = Vec::new();
+    let mut report = ParseReport::default();
 
     let walker = WalkBuilder::new(root)
         .hidden(true)
@@ -31,22 +45,40 @@ pub fn parse_directory(root: &Path) -> Vec<IndexDocument> {
 
         let relative_path = path
             .strip_prefix(root)
-            .unwrap_or(path)
+            .unwrap_or_else(|_| path)
             .to_string_lossy()
             .to_string();
 
         // Try repoask-parser first (oxc + markdown)
-        let docs = repoask_parser::parse_file(&relative_path, &source);
-        if !docs.is_empty() {
-            documents.extend(docs);
-            continue;
+        match repoask_parser::parse_file(&relative_path, &source) {
+            repoask_parser::ParseOutcome::Ok(docs) => {
+                report.parsed_count += 1;
+                documents.extend(docs);
+                continue;
+            }
+            repoask_parser::ParseOutcome::Failed { filepath, reason } => {
+                report.failed.push((filepath, reason));
+                continue;
+            }
+            repoask_parser::ParseOutcome::Unsupported { .. } => {
+                // Fall through to tree-sitter
+            }
         }
 
         // Then try repoask-treesitter
-        if let Some(docs) = repoask_treesitter::parse_file(&relative_path, &source) {
-            documents.extend(docs);
+        match repoask_treesitter::parse_file(&relative_path, &source) {
+            repoask_treesitter::ParseOutcome::Ok(docs) => {
+                report.parsed_count += 1;
+                documents.extend(docs);
+            }
+            repoask_treesitter::ParseOutcome::Failed { filepath, reason } => {
+                report.failed.push((filepath, reason));
+            }
+            repoask_treesitter::ParseOutcome::Unsupported { filepath, .. } => {
+                report.unsupported.push(filepath);
+            }
         }
     }
 
-    documents
+    (documents, report)
 }

@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::bm25::Bm25Scorer;
 use crate::tokenizer::{tokenize_identifier, tokenize_query, tokenize_text};
 use crate::types::{
-    CodeResult, DocId, DocResult, ExampleResult, FieldId, FieldStats, IndexDocument, Posting,
-    SearchResult, FIELD_DOC_CONTENT, FIELD_FILEPATH, FIELD_PARAMS,
-    FIELD_SYMBOL_NAME, NUM_FIELDS,
+    CodeResult, DocId, DocResult, ExampleResult, FIELD_DOC_CONTENT, FIELD_FILEPATH, FIELD_PARAMS,
+    FIELD_SYMBOL_NAME, FieldId, FieldStats, IndexDocument, NUM_FIELDS, Posting, SearchResult,
 };
 
 // ---------------------------------------------------------------------------
@@ -133,11 +132,7 @@ impl InvertedIndex {
                 lengths[FIELD_FILEPATH as usize] = path_tokens.len() as u16;
                 self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens);
 
-                let preview = section
-                    .content
-                    .chars()
-                    .take(200)
-                    .collect::<String>();
+                let preview = section.content.chars().take(200).collect::<String>();
 
                 self.documents.push(StoredDoc::Doc {
                     filepath: section.filepath.clone(),
@@ -213,7 +208,11 @@ impl InvertedIndex {
         }
 
         let mut scored: Vec<(DocId, f32)> = doc_scores.into_iter().collect();
-        scored.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
         scored.truncate(limit);
 
         scored
@@ -278,7 +277,12 @@ fn is_example_path(filepath: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "test assertions")]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test assertions"
+)]
 mod tests {
     use super::*;
     use crate::types::{DocSection, Symbol, SymbolKind};
@@ -367,10 +371,7 @@ mod tests {
 
     #[test]
     fn test_example_detection() {
-        let index = InvertedIndex::build(vec![make_symbol(
-            "handler",
-            "examples/auth/login.ts",
-        )]);
+        let index = InvertedIndex::build(vec![make_symbol("handler", "examples/auth/login.ts")]);
         let results = index.search("handler", 10);
         assert!(matches!(results[0], SearchResult::Example(_)));
     }
@@ -397,5 +398,35 @@ mod tests {
         let index = InvertedIndex::build(docs);
         let results = index.search("validate", 5);
         assert_eq!(results.len(), 5);
+    }
+
+    // -----------------------------------------------------------------------
+    // Snapshot tests (insta)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn snapshot_mixed_search_results() {
+        let index = InvertedIndex::build(vec![
+            make_symbol("validateToken", "src/auth.rs"),
+            make_symbol("handler", "examples/auth/login.ts"),
+            make_doc(
+                "Authentication",
+                "JWT token validation guide",
+                "docs/auth.md",
+            ),
+        ]);
+        let results = index.search("validate token authentication", 10);
+        insta::assert_json_snapshot!(results);
+    }
+
+    #[test]
+    fn snapshot_code_only_results() {
+        let index = InvertedIndex::build(vec![
+            make_symbol("parseJSON", "src/json.rs"),
+            make_symbol("parseXML", "src/xml.rs"),
+            make_symbol("parseCSV", "src/csv.rs"),
+        ]);
+        let results = index.search("parse", 10);
+        insta::assert_json_snapshot!(results);
     }
 }

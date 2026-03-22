@@ -167,8 +167,14 @@ mod tests {
     fn test_heading_hierarchy() {
         let md = "# Root\n\n## Child\n\n### Grandchild\n\nDeep content.\n";
         let sections = parse_markdown(md, "doc.md");
-        let grandchild = sections.iter().find(|s| s.section_title == "Grandchild").unwrap();
-        assert_eq!(grandchild.heading_hierarchy, vec!["Root", "Child", "Grandchild"]);
+        let grandchild = sections
+            .iter()
+            .find(|s| s.section_title == "Grandchild")
+            .unwrap();
+        assert_eq!(
+            grandchild.heading_hierarchy,
+            vec!["Root", "Child", "Grandchild"]
+        );
     }
 
     #[test]
@@ -184,7 +190,11 @@ mod tests {
     fn test_code_symbols_extracted() {
         let md = "# Auth\n\n```typescript\nconst token = validateJWT(secret);\n```\n";
         let sections = parse_markdown(md, "doc.md");
-        assert!(sections[0].code_symbols.contains(&"validateJWT".to_string()));
+        assert!(
+            sections[0]
+                .code_symbols
+                .contains(&"validateJWT".to_string())
+        );
         assert!(sections[0].code_symbols.contains(&"token".to_string()));
     }
 

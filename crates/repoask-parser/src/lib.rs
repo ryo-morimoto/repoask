@@ -8,25 +8,91 @@ pub mod oxc;
 
 use repoask_core::types::IndexDocument;
 
+/// Outcome of parsing a single file.
+#[derive(Debug)]
+pub enum ParseOutcome {
+    /// Successfully extracted documents.
+    Ok(Vec<IndexDocument>),
+    /// File extension not supported by this crate.
+    Unsupported {
+        /// The file path that was skipped.
+        filepath: String,
+        /// The file extension (or `None` if no extension).
+        extension: Option<String>,
+    },
+    /// Parser encountered an error.
+    Failed {
+        /// The file path that failed.
+        filepath: String,
+        /// Description of the failure.
+        reason: String,
+    },
+}
+
+/// Error type for parse operations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ParseError {
+    /// The file extension is not supported.
+    #[error("unsupported file extension: {filepath}")]
+    UnsupportedExtension {
+        /// The file path.
+        filepath: String,
+    },
+    /// The parser failed to parse the file.
+    #[error("parse failed for {filepath}: {reason}")]
+    ParseFailed {
+        /// The file path.
+        filepath: String,
+        /// The reason for the failure.
+        reason: String,
+    },
+}
+
 /// Parse a single file given its path and source content.
 ///
-/// Returns extracted index documents (code symbols or doc sections).
-/// Returns an empty vec if the file extension is not supported.
-pub fn parse_file(filepath: &str, source: &str) -> Vec<IndexDocument> {
+/// Returns a [`ParseOutcome`] that distinguishes between success,
+/// unsupported file types, and parse failures.
+pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
     let ext = match filepath.rsplit('.').next() {
         Some(e) => e,
-        None => return vec![],
+        None => {
+            return ParseOutcome::Unsupported {
+                filepath: filepath.to_owned(),
+                extension: None,
+            };
+        }
     };
 
     match ext {
         "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs" => {
             let symbols = oxc::extract_ts_symbols(source, filepath);
-            symbols.into_iter().map(IndexDocument::Code).collect()
+            if symbols.is_empty() && !source.trim().is_empty() {
+                ParseOutcome::Failed {
+                    filepath: filepath.to_owned(),
+                    reason: "oxc parser returned no symbols (possible parse error)".to_owned(),
+                }
+            } else {
+                ParseOutcome::Ok(symbols.into_iter().map(IndexDocument::Code).collect())
+            }
         }
         "md" | "mdx" => {
             let sections = markdown::parse_markdown(source, filepath);
-            sections.into_iter().map(IndexDocument::Doc).collect()
+            ParseOutcome::Ok(sections.into_iter().map(IndexDocument::Doc).collect())
         }
-        _ => vec![],
+        _ => ParseOutcome::Unsupported {
+            filepath: filepath.to_owned(),
+            extension: Some(ext.to_owned()),
+        },
+    }
+}
+
+/// Parse a single file, returning only the documents (ignoring skips/failures).
+///
+/// Convenience wrapper for callers that don't need skip/failure info.
+pub fn parse_file_lenient(filepath: &str, source: &str) -> Vec<IndexDocument> {
+    match parse_file(filepath, source) {
+        ParseOutcome::Ok(docs) => docs,
+        ParseOutcome::Unsupported { .. } | ParseOutcome::Failed { .. } => vec![],
     }
 }

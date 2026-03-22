@@ -58,7 +58,14 @@ fn extract_from_statement(
                     params: vec![],
                 });
                 // Extract methods
-                extract_class_methods(&class.body, &class_name, filepath, line_index, source, symbols);
+                extract_class_methods(
+                    &class.body,
+                    &class_name,
+                    filepath,
+                    line_index,
+                    source,
+                    symbols,
+                );
             }
         }
         Statement::TSInterfaceDeclaration(iface) => {
@@ -94,43 +101,41 @@ fn extract_from_statement(
                 params: vec![],
             });
         }
-        Statement::ExportDefaultDeclaration(export) => {
-            match &export.declaration {
-                ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
-                    let name = func
-                        .id
-                        .as_ref()
-                        .map(|id| id.name.to_string())
-                        .unwrap_or_else(|| "default".to_string());
-                    symbols.push(Symbol {
-                        name,
-                        kind: SymbolKind::Function,
-                        filepath: filepath.to_string(),
-                        start_line: line_index.line_of(func.span.start),
-                        end_line: line_index.line_of(func.span.end),
-                        doc_comment: extract_leading_comment(source, func.span.start),
-                        params: extract_params(&func.params),
-                    });
-                }
-                ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                    let name = class
-                        .id
-                        .as_ref()
-                        .map(|id| id.name.to_string())
-                        .unwrap_or_else(|| "default".to_string());
-                    symbols.push(Symbol {
-                        name,
-                        kind: SymbolKind::Class,
-                        filepath: filepath.to_string(),
-                        start_line: line_index.line_of(class.span.start),
-                        end_line: line_index.line_of(class.span.end),
-                        doc_comment: extract_leading_comment(source, class.span.start),
-                        params: vec![],
-                    });
-                }
-                _ => {}
+        Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+            ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+                let name = func
+                    .id
+                    .as_ref()
+                    .map(|id| id.name.to_string())
+                    .unwrap_or_else(|| "default".to_string());
+                symbols.push(Symbol {
+                    name,
+                    kind: SymbolKind::Function,
+                    filepath: filepath.to_string(),
+                    start_line: line_index.line_of(func.span.start),
+                    end_line: line_index.line_of(func.span.end),
+                    doc_comment: extract_leading_comment(source, func.span.start),
+                    params: extract_params(&func.params),
+                });
             }
-        }
+            ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                let name = class
+                    .id
+                    .as_ref()
+                    .map(|id| id.name.to_string())
+                    .unwrap_or_else(|| "default".to_string());
+                symbols.push(Symbol {
+                    name,
+                    kind: SymbolKind::Class,
+                    filepath: filepath.to_string(),
+                    start_line: line_index.line_of(class.span.start),
+                    end_line: line_index.line_of(class.span.end),
+                    doc_comment: extract_leading_comment(source, class.span.start),
+                    params: vec![],
+                });
+            }
+            _ => {}
+        },
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
                 extract_from_declaration(decl, filepath, line_index, source, symbols);
@@ -176,7 +181,14 @@ fn extract_from_declaration(
                     doc_comment: extract_leading_comment(source, class.span.start),
                     params: vec![],
                 });
-                extract_class_methods(&class.body, &class_name, filepath, line_index, source, symbols);
+                extract_class_methods(
+                    &class.body,
+                    &class_name,
+                    filepath,
+                    line_index,
+                    source,
+                    symbols,
+                );
             }
         }
         Declaration::TSInterfaceDeclaration(iface) => {
@@ -410,9 +422,21 @@ class UserService {
 }
 "#;
         let symbols = extract_ts_symbols(source, "test.ts");
-        assert!(symbols.iter().any(|s| s.name == "UserService" && s.kind == SymbolKind::Class));
-        assert!(symbols.iter().any(|s| s.name == "constructor" && s.kind == SymbolKind::Method));
-        assert!(symbols.iter().any(|s| s.name == "findById" && s.kind == SymbolKind::Method));
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "UserService" && s.kind == SymbolKind::Class)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "constructor" && s.kind == SymbolKind::Method)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "findById" && s.kind == SymbolKind::Method)
+        );
     }
 
     #[test]
@@ -458,7 +482,13 @@ function validateToken(token: string): Payload { }
 "#;
         let symbols = extract_ts_symbols(source, "test.ts");
         assert_eq!(symbols.len(), 1);
-        assert!(symbols[0].doc_comment.as_ref().unwrap().contains("Validates a JWT"));
+        assert!(
+            symbols[0]
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Validates a JWT")
+        );
     }
 
     #[test]

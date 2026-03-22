@@ -56,10 +56,9 @@ pub fn parse_repo_spec(spec: &str) -> Option<(&str, &str, Option<&str>)> {
 
 /// Search a repository. Handles clone, indexing, caching, and search.
 pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>, RepoError> {
-    let (owner, repo, ref_spec) = parse_repo_spec(spec)
-        .ok_or_else(|| RepoError::InvalidSpec {
-            spec: spec.to_owned(),
-        })?;
+    let (owner, repo, ref_spec) = parse_repo_spec(spec).ok_or_else(|| RepoError::InvalidSpec {
+        spec: spec.to_owned(),
+    })?;
 
     // Acquire advisory lock
     let lock_path = cache::repo_lock_path(owner, repo);
@@ -111,7 +110,7 @@ fn load_or_build_index(
     // Need to build index: ensure clone exists, parse, build, save
     let clone_dir = clone::ensure_clone(owner, repo, ref_spec)?;
 
-    let documents = crate::parse::parse_directory(&clone_dir);
+    let (documents, _report) = crate::parse::parse_directory(&clone_dir);
     let index = InvertedIndex::build(documents);
 
     // Save index and metadata
@@ -128,6 +127,7 @@ fn load_or_build_index(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

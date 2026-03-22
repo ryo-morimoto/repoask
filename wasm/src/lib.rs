@@ -41,7 +41,7 @@ impl RepoIndex {
     /// The filepath determines the parser used (e.g. `.ts` → oxc, `.md` → markdown).
     #[wasm_bindgen(js_name = "addFile")]
     pub fn add_file(&mut self, filepath: &str, content: &str) {
-        let docs = repoask_parser::parse_file(filepath, content);
+        let docs = repoask_parser::parse_file_lenient(filepath, content);
         self.documents.extend(docs);
     }
 

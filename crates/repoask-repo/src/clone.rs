@@ -21,7 +21,11 @@ pub enum CloneError {
 ///
 /// Returns the path to the cloned repository directory.
 /// If the clone already exists, returns immediately.
-pub fn ensure_clone(owner: &str, repo: &str, ref_spec: Option<&str>) -> Result<PathBuf, CloneError> {
+pub fn ensure_clone(
+    owner: &str,
+    repo: &str,
+    ref_spec: Option<&str>,
+) -> Result<PathBuf, CloneError> {
     let repo_dir = cache::repo_clone_dir(owner, repo);
 
     if repo_dir.exists() {
@@ -38,12 +42,7 @@ fn clone_fresh(
     ref_spec: Option<&str>,
     target: &Path,
 ) -> Result<PathBuf, CloneError> {
-    let tmp_dir = cache::cache_dir().join(format!(
-        "tmp/{}-{}-{}",
-        owner,
-        repo,
-        std::process::id()
-    ));
+    let tmp_dir = cache::cache_dir().join(format!("tmp/{}-{}-{}", owner, repo, std::process::id()));
 
     // Clean up any stale tmp dir
     if tmp_dir.exists() {

@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 repoask-core.workspace = true
+thiserror.workspace = true
 oxc_parser.workspace = true
 oxc_allocator.workspace = true
 oxc_ast.workspace = true

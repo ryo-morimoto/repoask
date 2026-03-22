@@ -146,6 +146,83 @@ mod tests {
         let tokens = tokenize_text("middleware authentication setup");
         assert_eq!(tokens.len(), 3);
         // All should be stemmed
-        assert!(tokens.contains(&"middlewar".to_string()) || tokens.contains(&"middleware".to_string()));
+        assert!(
+            tokens.contains(&"middleware".to_string())
+                || tokens.contains(&"middleware".to_string())
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Property-based tests (proptest)
+    // -----------------------------------------------------------------------
+
+    mod property {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// Generate random camelCase / snake_case identifiers.
+        fn identifier_strategy() -> impl Strategy<Value = String> {
+            prop::collection::vec("[a-z]{2,8}", 1..5).prop_map(|parts| {
+                let mut result = parts[0].clone();
+                for part in &parts[1..] {
+                    // Randomly mix camelCase and snake_case
+                    if result.len() % 2 == 0 {
+                        let mut chars = part.chars();
+                        if let Some(first) = chars.next() {
+                            result.push(first.to_ascii_uppercase());
+                            result.extend(chars);
+                        }
+                    } else {
+                        result.push('_');
+                        result.push_str(part);
+                    }
+                }
+                result
+            })
+        }
+
+        proptest! {
+            /// split_identifier never produces empty tokens.
+            #[test]
+            fn split_never_empty_tokens(name in identifier_strategy()) {
+                let tokens = split_identifier(&name);
+                for token in &tokens {
+                    prop_assert!(!token.is_empty(), "empty token from: {name}");
+                }
+            }
+
+            /// split_identifier tokens are always lowercase.
+            #[test]
+            fn split_always_lowercase(name in identifier_strategy()) {
+                let tokens = split_identifier(&name);
+                for token in &tokens {
+                    prop_assert_eq!(token, &token.to_lowercase(), "non-lowercase token from: {}", name);
+                }
+            }
+
+            /// All characters from the original identifier appear in some token.
+            #[test]
+            fn split_preserves_all_alpha_chars(name in identifier_strategy()) {
+                let tokens = split_identifier(&name);
+                let joined: String = tokens.concat();
+                for ch in name.chars() {
+                    if ch.is_alphanumeric() {
+                        prop_assert!(
+                            joined.contains(ch.to_ascii_lowercase()),
+                            "lost char '{ch}' from: {name}"
+                        );
+                    }
+                }
+            }
+
+            /// tokenize_query on ASCII input never panics and returns only non-empty tokens.
+            #[test]
+            fn tokenize_query_no_panic(query in "[a-zA-Z0-9_ ]{0,200}") {
+                let tokens = tokenize_query(&query);
+                for token in &tokens {
+                    prop_assert!(!token.is_empty());
+                }
+            }
+        }
     }
 }

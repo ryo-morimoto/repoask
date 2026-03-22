@@ -112,4 +112,81 @@ mod tests {
         let score_path = scorer.score(1, 10, 3, &stats, 5, 100); // FIELD_FILEPATH, weight 1.0
         assert!((score_name / score_path - 4.0).abs() < 0.01);
     }
+
+    // -----------------------------------------------------------------------
+    // Property-based tests (proptest)
+    // -----------------------------------------------------------------------
+
+    mod property {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// IDF is always non-negative.
+            #[test]
+            fn idf_non_negative(
+                doc_freq in 1u32..1000,
+                total_docs in 1u32..10000,
+            ) {
+                prop_assume!(doc_freq <= total_docs);
+                let scorer = Bm25Scorer::new();
+                let idf = scorer.idf(doc_freq, total_docs);
+                prop_assert!(idf >= 0.0, "negative IDF: {idf} (df={doc_freq}, N={total_docs})");
+            }
+
+            /// TF is always non-negative.
+            #[test]
+            fn tf_non_negative(
+                term_freq in 1u16..100,
+                field_length in 1u16..1000,
+            ) {
+                let scorer = Bm25Scorer::new();
+                let stats = FieldStats {
+                    total_length: 500,
+                    doc_count: 10,
+                };
+                let tf = scorer.tf(term_freq, field_length, &stats);
+                prop_assert!(tf >= 0.0, "negative TF: {tf}");
+            }
+
+            /// Higher term frequency → higher or equal TF score (monotonic).
+            #[test]
+            fn tf_monotonic_in_freq(
+                tf_low in 1u16..50,
+                tf_delta in 1u16..50,
+                field_length in 1u16..500,
+            ) {
+                let tf_high = tf_low.saturating_add(tf_delta);
+                let scorer = Bm25Scorer::new();
+                let stats = FieldStats {
+                    total_length: 500,
+                    doc_count: 10,
+                };
+                let score_low = scorer.tf(tf_low, field_length, &stats);
+                let score_high = scorer.tf(tf_high, field_length, &stats);
+                prop_assert!(
+                    score_high >= score_low,
+                    "TF not monotonic: tf({tf_low})={score_low} > tf({tf_high})={score_high}"
+                );
+            }
+
+            /// Rarer terms (lower doc_freq) have higher IDF.
+            #[test]
+            fn rarer_terms_higher_idf(
+                df_rare in 1u32..100,
+                df_delta in 1u32..100,
+                total_docs in 200u32..10000,
+            ) {
+                let df_common = df_rare.saturating_add(df_delta).min(total_docs);
+                prop_assume!(df_rare < df_common);
+                let scorer = Bm25Scorer::new();
+                let idf_rare = scorer.idf(df_rare, total_docs);
+                let idf_common = scorer.idf(df_common, total_docs);
+                prop_assert!(
+                    idf_rare >= idf_common,
+                    "rare term should have higher IDF: idf({df_rare})={idf_rare} < idf({df_common})={idf_common}"
+                );
+            }
+        }
+    }
 }
