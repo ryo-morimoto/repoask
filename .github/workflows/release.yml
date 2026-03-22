@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions: {}
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release (draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --generate-notes
+
+  build:
+    name: Build / ${{ matrix.name }}
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cross: false
+          - name: linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            cross: false
+          - name: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            cross: false
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cross: false
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e18c1a97b10d1a3 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --package repoask
+          else
+            cargo build --release --target ${{ matrix.target }} --package repoask
+          fi
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ARCHIVE="repoask-${{ needs.create-release.outputs.version }}-${{ matrix.target }}"
+          mkdir "$ARCHIVE"
+          cp "target/${{ matrix.target }}/release/repoask" "$ARCHIVE/"
+          cp README.md LICENSE* "$ARCHIVE/" 2>/dev/null || true
+          tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+          shasum -a 256 "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
+          echo "ASSET=$ARCHIVE.tar.gz" >> "$GITHUB_ENV"
+          echo "CHECKSUM=$ARCHIVE.tar.gz.sha256" >> "$GITHUB_ENV"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = "repoask-${{ needs.create-release.outputs.version }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $archive
+          Copy-Item "target/${{ matrix.target }}/release/repoask.exe" $archive
+          Copy-Item README.md, LICENSE* $archive -ErrorAction SilentlyContinue
+          Compress-Archive -Path $archive -DestinationPath "$archive.zip"
+          $hash = (Get-FileHash "$archive.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $archive.zip" | Out-File -Encoding ascii "$archive.zip.sha256"
+          "ASSET=$archive.zip" >> $env:GITHUB_ENV
+          "CHECKSUM=$archive.zip.sha256" >> $env:GITHUB_ENV
+      - name: Upload to Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "${{ env.ASSET }}" "${{ env.CHECKSUM }}"
+
+  publish-release:
+    name: Publish Release
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Mark release as non-draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
