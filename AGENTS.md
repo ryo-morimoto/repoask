@@ -1,3 +1,28 @@
+# repoask
+
+## Development Rules
+
+### Dogfooding: Use repoask to search dependencies
+
+When investigating external repositories (dependencies, reference implementations, etc.), use `repoask` CLI instead of manually cloning or browsing GitHub.
+
+```bash
+# Example: search oxc-parser's API
+repoask search oxc-project/oxc "parse typescript"
+
+# Example: search tree-sitter's query API
+repoask search tree-sitter/tree-sitter "QueryCursor matches"
+
+# Example: search bit's JS library API
+repoask search bit-vcs/bit "createMemoryHost fetch transport"
+```
+
+This serves two purposes:
+1. Dogfooding — we find usability issues and search quality problems firsthand
+2. Efficiency — faster than cloning and grepping manually
+
+---
+
 # repoask 仕様書
 
 ## What
@@ -227,7 +252,7 @@ Agent:
      → [doc] docs/guides/nextjs.md#middleware: "Create middleware for session refresh..."
      → [example] examples/nextjs/middleware.ts: createMiddleware()
      → [code] src/GoTrueClient.ts: signInWithPassword(credentials)
-  
+
   2. 上位のdoc結果でセットアップ手順を把握
   3. 必要に応じて repoask extract で signInWithPassword の実装を読む
   4. ユーザーに手順 + コード例を提示
@@ -243,7 +268,7 @@ Agent:
      → [code] src/ZodError.ts: class ZodError (line 15-120)
      → [code] src/types.ts: safeParse() (line 340-365)
      → [doc] README.md#error-handling: "ZodError is a subclass of Error..."
-  
+
   2. repoask extract colinhacks/zod src/ZodError.ts:15
      → ZodError クラス全体のコードを取得
   3. 構造を説明
@@ -257,7 +282,7 @@ Human: "このライブラリ何？ mizchi/similarity"
 Agent:
   1. repoask overview mizchi/similarity
      → README要約 + ディレクトリ構造 + "Rust製コード類似度検出ツール。oxc-parserとtree-sitterでAST解析..."
-  
+
   2. repoask search mizchi/similarity "main entry point CLI"
      → [code] crates/similarity-ts/src/main.rs: fn main()
      → [doc] README.md#quick-start
