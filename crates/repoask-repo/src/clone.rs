@@ -105,13 +105,21 @@ fn clone_fresh(
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if std::fs::rename(&tmp_dir, target).is_err() {
-        copy_dir_recursive(&tmp_dir, target).map_err(|e| {
+    match std::fs::rename(&tmp_dir, target) {
+        Ok(()) => {}
+        Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
+            // Cross-filesystem: fall back to recursive copy
+            copy_dir_recursive(&tmp_dir, target).map_err(|copy_err| {
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+                let _ = std::fs::remove_dir_all(target);
+                copy_err
+            })?;
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            let _ = std::fs::remove_dir_all(target);
-            e
-        })?;
-        let _ = std::fs::remove_dir_all(&tmp_dir);
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Err(e.into());
+        }
     }
 
     Ok(target.to_path_buf())
