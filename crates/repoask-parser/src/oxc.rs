@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use oxc_allocator::Allocator;
+use oxc_ast::Comment;
 use oxc_ast::ast::*;
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
@@ -14,7 +17,8 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
         return vec![];
     }
 
-    let mut ctx = ExtractCtx::new(filepath, source);
+    let comments = build_comment_map(source, &ret.program.comments);
+    let mut ctx = ExtractCtx::new(filepath, source, comments);
 
     for stmt in &ret.program.body {
         extract_from_statement(stmt, &mut ctx);
@@ -23,20 +27,72 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
     ctx.symbols
 }
 
+/// Build a map from token start offset → cleaned doc comment text.
+///
+/// Uses oxc's `Comment.attached_to` field which gives the start offset of
+/// the token the comment is attached to. This replaces the previous
+/// O(file_size) reverse-scan per symbol with O(1) HashMap lookup.
+fn build_comment_map(source: &str, comments: &[Comment]) -> HashMap<u32, String> {
+    let mut map: HashMap<u32, Vec<&Comment>> = HashMap::new();
+    for comment in comments {
+        map.entry(comment.attached_to).or_default().push(comment);
+    }
+
+    let mut result = HashMap::new();
+    for (attached_to, group) in map {
+        let cleaned = clean_comment_group(source, &group);
+        if !cleaned.is_empty() {
+            result.insert(attached_to, cleaned);
+        }
+    }
+    result
+}
+
+/// Clean and join a group of comments attached to the same token.
+fn clean_comment_group(source: &str, comments: &[&Comment]) -> String {
+    let mut parts = Vec::new();
+    for comment in comments {
+        let text = &source[comment.span.start as usize..comment.span.end as usize];
+        let cleaned = clean_comment_text(text);
+        if !cleaned.is_empty() {
+            parts.push(cleaned);
+        }
+    }
+    parts.join(" ")
+}
+
+/// Clean a single comment's raw text (strip delimiters and asterisks).
+fn clean_comment_text(raw: &str) -> String {
+    raw.lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches("/**")
+                .trim_start_matches("/*")
+                .trim_start_matches("//")
+                .trim_end_matches("*/")
+                .trim_start_matches('*')
+                .trim()
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Shared context threaded through all extraction functions.
 struct ExtractCtx<'a> {
     filepath: &'a str,
-    source: &'a str,
     line_index: LineIndex,
+    /// Pre-computed doc comments keyed by token start offset.
+    comments: HashMap<u32, String>,
     symbols: Vec<Symbol>,
 }
 
 impl<'a> ExtractCtx<'a> {
-    fn new(filepath: &'a str, source: &'a str) -> Self {
+    fn new(filepath: &'a str, source: &'a str, comments: HashMap<u32, String>) -> Self {
         Self {
             filepath,
-            source,
             line_index: LineIndex::new(source),
+            comments,
             symbols: Vec::new(),
         }
     }
@@ -49,7 +105,7 @@ impl<'a> ExtractCtx<'a> {
             filepath: self.filepath.to_string(),
             start_line: self.line_index.line_of(span.start),
             end_line: self.line_index.line_of(span.end),
-            doc_comment: extract_leading_comment(self.source, span.start),
+            doc_comment: self.comments.get(&span.start).cloned(),
             params,
         });
     }
@@ -203,52 +259,6 @@ fn binding_pattern_name(pattern: &BindingPattern<'_>) -> Option<String> {
     match &pattern.kind {
         BindingPatternKind::BindingIdentifier(id) => Some(id.name.to_string()),
         _ => None,
-    }
-}
-
-/// Extract a leading JSDoc/block comment before a given byte offset.
-fn extract_leading_comment(source: &str, offset: u32) -> Option<String> {
-    let before = &source[..offset as usize];
-    let trimmed = before.trim_end();
-
-    if trimmed.ends_with("*/") {
-        let start = trimmed.rfind("/*")?;
-        let comment = &trimmed[start..];
-        let cleaned: String = comment
-            .lines()
-            .map(|line| {
-                line.trim()
-                    .trim_start_matches("/**")
-                    .trim_start_matches("/*")
-                    .trim_end_matches("*/")
-                    .trim_start_matches('*')
-                    .trim()
-            })
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
-        if cleaned.is_empty() {
-            None
-        } else {
-            Some(cleaned)
-        }
-    } else {
-        let mut comment_lines = Vec::new();
-        for line in before.lines().rev() {
-            let trimmed_line = line.trim();
-            if trimmed_line.starts_with("//") {
-                comment_lines.push(trimmed_line.trim_start_matches("//").trim().to_string());
-            } else if trimmed_line.is_empty() {
-                continue;
-            } else {
-                break;
-            }
-        }
-        if comment_lines.is_empty() {
-            return None;
-        }
-        comment_lines.reverse();
-        Some(comment_lines.join(" "))
     }
 }
 
