@@ -1,9 +1,11 @@
 # repoask
 
-Search code and docs in any GitHub repository. Local-first, zero dependencies, fast.
+Code understanding tool for any repository. Local-first, zero dependencies, fast.
 
 ```sh
-repoask search vercel/next.js "middleware authentication"
+repoask search  vercel/next.js "middleware authentication"  # find code and docs
+repoask explore supabase/auth-js "session management"       # understand how to use a library
+repoask trace   ./my-app src/auth/session.ts#UserSession    # trace impact of changes
 ```
 
 ## Install
@@ -47,7 +49,17 @@ $ repoask search colinhacks/zod "parse error" --format text
 Understand how to use an external repository. Surfaces docs, public APIs, types, and examples — top-down.
 
 ```sh
-repoask explore supabase/auth-js "authentication setup"
+$ repoask explore supabase/auth-js "authentication setup" --format text
+[doc]     README.md#quick-start
+          "Install @supabase/auth-js and call createClient()..."
+[api]     src/GoTrueClient.ts  signInWithPassword(credentials)
+          → returns AuthResponse { user, session }
+[api]     src/GoTrueClient.ts  signUp(credentials)
+          → returns AuthResponse { user, session }
+[example] examples/nextjs/middleware.ts  createMiddleware()
+          lines 8-30
+[type]    src/lib/types.ts  AuthResponse
+          { user: User | null, session: Session | null }
 ```
 
 *Coming soon.*
@@ -57,7 +69,20 @@ repoask explore supabase/auth-js "authentication setup"
 Trace impact of changes in your own repository. Shows call graphs, type dependencies, and affected files — center-out.
 
 ```sh
-repoask trace my-repo src/auth/session.ts#UserSession
+$ repoask trace ./my-app src/auth/session.ts#UserSession --format text
+target:   src/types/session.ts:15  type UserSession
+
+produces: (2 files)
+  src/auth/login.ts       createSession()
+  src/auth/refresh.ts     refreshSession()
+
+consumes: (12 files)
+  src/api/users.ts        getUser()          score: 0.95
+  src/api/profile.ts      updateProfile()    score: 0.87
+  src/middleware/auth.ts   requireAuth()      score: 0.82
+  ... and 9 more
+
+impact: high (23 references across 14 files)
 ```
 
 *Coming soon.*
