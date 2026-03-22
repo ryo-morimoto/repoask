@@ -5,124 +5,56 @@ description: Search code and docs in any GitHub repository using BM25 full-text 
 
 # repoask
 
-Search code symbols and documentation across any public GitHub repository. No API keys, no Docker, no LLM — just a single binary.
+Search code symbols and documentation across any public GitHub repository. No API keys, no Docker, no LLM.
+
+## When to use
+
+When you need to search code or documentation in an external GitHub repository.
 
 ## Prerequisites
 
-`repoask` must be installed. Check with:
-
 ```
-repoask --version
-```
-
-If not installed:
-
-```
-cargo install repoask
+repoask --version   # check installation
+cargo install repoask  # install if missing
 ```
 
 ## Commands
 
-### search
-
 ```
-repoask search <owner/repo> "<query>" [--limit N] [--format json|text]
-```
-
-- Default output: JSON lines (one JSON object per line)
-- Default limit: 10 results
-- First run clones the repo (adds ~1-3s). Subsequent runs use cache (~6ms)
-- Supports `owner/repo@branch` or `owner/repo@v2.0.0` for version pinning
-
-### cleanup
-
-```
+repoask search <owner/repo[@ref]> "<query>" [--limit N] [--format json|text]
 repoask cleanup [owner/repo]
 ```
 
-Remove cached clone and index. Omit the argument to clean all repos.
+- First run clones the repo (~1-3s). Subsequent runs use cache (~6ms)
+- Default: 10 results, JSON lines output
+- Exit code 1 + stderr message on error
 
 ## Output format
 
-Each JSON line is one of three result types:
+Each line is an independent JSON object. Match on the top-level key:
 
-**Code result** (function, class, type, etc.):
-```json
-{"Code":{"filepath":"src/auth.ts","name":"validateToken","kind":"Function","start_line":42,"end_line":67,"score":12.5}}
-```
+| Key | Type | Fields |
+|---|---|---|
+| `"Code"` | Source code symbol | `filepath`, `name`, `kind`, `start_line`, `end_line`, `score` |
+| `"Doc"` | Markdown section | `filepath`, `section`, `snippet`, `score` |
 
-**Doc result** (markdown section):
+`kind`: `Function` \| `Method` \| `Class` \| `Struct` \| `Enum` \| `Interface` \| `Type` \| `Trait` \| `Const`
+
+Code in `examples/`, `sample/`, or `demo/` directories has `is_example: true`.
+
+Example:
+
 ```json
+{"Code":{"filepath":"src/auth.ts","name":"validateToken","kind":"Function","start_line":42,"end_line":67,"score":12.5,"is_example":false}}
 {"Doc":{"filepath":"docs/auth.md","section":"Authentication","snippet":"This section explains how to...","score":10.2}}
 ```
 
-**Example result** (code in examples/ directory):
-```json
-{"Example":{"filepath":"examples/auth/login.ts","name":"handler","kind":"Function","start_line":8,"end_line":30,"score":9.1}}
-```
+The `score` is relative within a single query — do not compare across queries.
 
-### Result type discrimination
-
-Match on the top-level key to determine the result type:
-- `"Code"` → source code symbol
-- `"Doc"` → documentation section
-- `"Example"` → example code (from `examples/`, `sample/`, or `demo/` directories)
-
-### Symbol kinds
-
-`kind` is one of: `Function`, `Method`, `Class`, `Struct`, `Enum`, `Interface`, `Type`, `Trait`, `Const`
-
-## Supported languages
-
-Code symbol extraction:
-- **TypeScript/JavaScript** (via oxc-parser): `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs`
-- **Rust**: `.rs`
-- **Python**: `.py`, `.pyi`
-- **Go**: `.go`
-- **Java**: `.java`
-- **C/C++**: `.c`, `.h`, `.cpp`, `.cc`, `.hpp`
-- **Ruby**: `.rb`
-
-Documentation: all `.md` and `.mdx` files.
-
-## Usage patterns
-
-### Find how to use a library feature
+## Example
 
 ```
 repoask search supabase/auth-js "authentication setup"
 ```
 
-Read the top Doc results for setup instructions, then use Code results to find the actual API.
-
-### Find a specific function or type
-
-```
-repoask search colinhacks/zod "ZodError class"
-```
-
-Use the `start_line`/`end_line` from Code results to read the exact source range.
-
-### Explore an unfamiliar repo
-
-```
-repoask search owner/repo "main entry point CLI"
-```
-
-Start with broad queries to find the entry point, then narrow down.
-
-### Read a specific code range after search
-
-After getting a Code result with `start_line` and `end_line`, read the source:
-
-```
-cat ~/.cache/repoask/repos/github.com/<owner>/<repo>/repo/<filepath> | sed -n '<start_line>,<end_line>p'
-```
-
-## Tips
-
-- Use natural language: "authentication middleware", "error handling", "database connection"
-- Include technical terms: "JWT", "OAuth", "WebSocket" — the tokenizer handles camelCase splitting
-- Results are ranked by BM25 relevance. Symbol name matches rank highest, then doc headings, then body text
-- The `score` field is relative within a single query — don't compare scores across queries
-- Use `--limit 20` if the default 10 results don't surface what you need
+Use `start_line`/`end_line` from results to read the exact source range.

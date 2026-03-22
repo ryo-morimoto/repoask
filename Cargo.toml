@@ -44,7 +44,7 @@ ignore = "0.4"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
-missing_docs = "warn"
+missing_docs = "deny"
 unreachable_pub = "warn"
 unused_qualifications = "warn"
 
