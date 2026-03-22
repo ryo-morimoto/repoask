@@ -11,6 +11,7 @@ workspace = true
 repoask-core.workspace = true
 repoask-parser.workspace = true
 repoask-treesitter.workspace = true
+crossbeam-channel = "0.5"
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
