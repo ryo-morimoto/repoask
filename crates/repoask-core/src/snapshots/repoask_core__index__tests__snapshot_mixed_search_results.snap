@@ -18,7 +18,8 @@ expression: results
       "kind": "Function",
       "start_line": 1,
       "end_line": 10,
-      "score": 3.1215336
+      "score": 3.1215336,
+      "is_example": false
     }
   }
 ]

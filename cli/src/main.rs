@@ -124,9 +124,10 @@ fn print_text(results: &[SearchResult]) {
     for result in results {
         match result {
             SearchResult::Code(r) => {
+                let label = if r.is_example { "example" } else { "code" };
                 let _ = writeln!(
                     stdout,
-                    "[code] {file}:{start}-{end}  {kind:?} {name}  (score: {score:.3})",
+                    "[{label}] {file}:{start}-{end}  {kind:?} {name}  (score: {score:.3})",
                     file = r.filepath,
                     start = r.start_line,
                     end = r.end_line,
@@ -142,18 +143,6 @@ fn print_text(results: &[SearchResult]) {
                     "[doc]  {file}#{section}  \"{snippet}...\"  (score: {score:.3})",
                     file = r.filepath,
                     section = r.section,
-                    score = r.score,
-                );
-            }
-            SearchResult::Example(r) => {
-                let _ = writeln!(
-                    stdout,
-                    "[example] {file}:{start}-{end}  {kind:?} {name}  (score: {score:.3})",
-                    file = r.filepath,
-                    start = r.start_line,
-                    end = r.end_line,
-                    kind = r.kind,
-                    name = r.name,
                     score = r.score,
                 );
             }

@@ -10,7 +10,8 @@ expression: results
       "kind": "Function",
       "start_line": 1,
       "end_line": 10,
-      "score": 0.53412557
+      "score": 0.53412557,
+      "is_example": false
     }
   },
   {
@@ -20,7 +21,8 @@ expression: results
       "kind": "Function",
       "start_line": 1,
       "end_line": 10,
-      "score": 0.53412557
+      "score": 0.53412557,
+      "is_example": false
     }
   },
   {
@@ -30,7 +32,8 @@ expression: results
       "kind": "Function",
       "start_line": 1,
       "end_line": 10,
-      "score": 0.53412557
+      "score": 0.53412557,
+      "is_example": false
     }
   }
 ]

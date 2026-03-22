@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bm25::Bm25Scorer;
 use crate::tokenizer::{tokenize_identifier, tokenize_query, tokenize_text};
-use crate::types::{CodeResult, DocResult, ExampleResult, IndexDocument, SearchResult};
+use crate::types::{CodeResult, DocResult, IndexDocument, SearchResult};
 
 // ---------------------------------------------------------------------------
 // Index internal types
@@ -318,22 +318,7 @@ impl InvertedIndex {
                 kind,
                 start_line,
                 end_line,
-                is_example: true,
-            } => SearchResult::Example(ExampleResult {
-                filepath: filepath.clone(),
-                name: name.clone(),
-                kind: *kind,
-                start_line: *start_line,
-                end_line: *end_line,
-                score,
-            }),
-            StoredDoc::Code {
-                filepath,
-                name,
-                kind,
-                start_line,
-                end_line,
-                is_example: false,
+                is_example,
             } => SearchResult::Code(CodeResult {
                 filepath: filepath.clone(),
                 name: name.clone(),
@@ -341,6 +326,7 @@ impl InvertedIndex {
                 start_line: *start_line,
                 end_line: *end_line,
                 score,
+                is_example: *is_example,
             }),
             StoredDoc::Doc {
                 filepath,
@@ -462,7 +448,13 @@ mod tests {
     fn test_example_detection() {
         let index = InvertedIndex::build(vec![make_symbol("handler", "examples/auth/login.ts")]);
         let results = index.search("handler", 10);
-        assert!(matches!(results[0], SearchResult::Example(_)));
+        assert!(matches!(
+            results[0],
+            SearchResult::Code(CodeResult {
+                is_example: true,
+                ..
+            })
+        ));
     }
 
     #[test]

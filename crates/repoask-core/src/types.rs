@@ -50,14 +50,13 @@ pub struct DocSection {
 }
 
 // ---------------------------------------------------------------------------
-// Search result types (discriminated union: Code | Doc | Example)
+// Search result types (discriminated union: Code | Doc)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SearchResult {
     Code(CodeResult),
     Doc(DocResult),
-    Example(ExampleResult),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +67,7 @@ pub struct CodeResult {
     pub start_line: u32,
     pub end_line: u32,
     pub score: f32,
+    pub is_example: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,22 +78,11 @@ pub struct DocResult {
     pub score: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExampleResult {
-    pub filepath: String,
-    pub name: String,
-    pub kind: SymbolKind,
-    pub start_line: u32,
-    pub end_line: u32,
-    pub score: f32,
-}
-
 impl SearchResult {
     pub fn score(&self) -> f32 {
         match self {
             Self::Code(r) => r.score,
             Self::Doc(r) => r.score,
-            Self::Example(r) => r.score,
         }
     }
 
@@ -101,7 +90,6 @@ impl SearchResult {
         match self {
             Self::Code(r) => &r.filepath,
             Self::Doc(r) => &r.filepath,
-            Self::Example(r) => &r.filepath,
         }
     }
 }
