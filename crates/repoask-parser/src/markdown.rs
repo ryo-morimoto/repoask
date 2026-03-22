@@ -148,6 +148,7 @@ fn extract_code_block_identifiers(code: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

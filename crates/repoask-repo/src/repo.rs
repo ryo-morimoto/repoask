@@ -11,53 +11,27 @@ use crate::clone;
 use crate::index_store;
 
 /// Error type for repository operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RepoError {
     /// Clone failed.
-    Clone(clone::CloneError),
+    #[error("clone: {0}")]
+    Clone(#[from] clone::CloneError),
     /// Index save/load failed.
-    IndexSave(index_store::SaveError),
+    #[error("index save: {0}")]
+    IndexSave(#[from] index_store::SaveError),
     /// Index load failed.
-    IndexLoad(index_store::LoadError),
+    #[error("index load: {0}")]
+    IndexLoad(#[from] index_store::LoadError),
     /// IO error.
-    Io(std::io::Error),
-}
-
-impl std::fmt::Display for RepoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Clone(e) => write!(f, "clone: {e}"),
-            Self::IndexSave(e) => write!(f, "index save: {e}"),
-            Self::IndexLoad(e) => write!(f, "index load: {e}"),
-            Self::Io(e) => write!(f, "IO: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for RepoError {}
-
-impl From<clone::CloneError> for RepoError {
-    fn from(e: clone::CloneError) -> Self {
-        Self::Clone(e)
-    }
-}
-
-impl From<index_store::SaveError> for RepoError {
-    fn from(e: index_store::SaveError) -> Self {
-        Self::IndexSave(e)
-    }
-}
-
-impl From<index_store::LoadError> for RepoError {
-    fn from(e: index_store::LoadError) -> Self {
-        Self::IndexLoad(e)
-    }
-}
-
-impl From<std::io::Error> for RepoError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// Invalid repository specification.
+    #[error("invalid repo spec: {spec} (expected owner/repo)")]
+    InvalidSpec {
+        /// The invalid spec string.
+        spec: String,
+    },
 }
 
 /// Parse an `owner/repo` spec, optionally with `@ref`.
@@ -83,14 +57,15 @@ pub fn parse_repo_spec(spec: &str) -> Option<(&str, &str, Option<&str>)> {
 /// Search a repository. Handles clone, indexing, caching, and search.
 pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>, RepoError> {
     let (owner, repo, ref_spec) = parse_repo_spec(spec)
-        .ok_or_else(|| RepoError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("invalid repo spec: {spec} (expected owner/repo)"),
-        )))?;
+        .ok_or_else(|| RepoError::InvalidSpec {
+            spec: spec.to_owned(),
+        })?;
 
     // Acquire advisory lock
     let lock_path = cache::repo_lock_path(owner, repo);
-    std::fs::create_dir_all(lock_path.parent().unwrap_or(Path::new("")))?;
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -136,11 +111,13 @@ fn load_or_build_index(
     // Need to build index: ensure clone exists, parse, build, save
     let clone_dir = clone::ensure_clone(owner, repo, ref_spec)?;
 
-    let documents = repoask_parser::parse_directory(&clone_dir);
+    let documents = crate::parse::parse_directory(&clone_dir);
     let index = InvertedIndex::build(documents);
 
     // Save index and metadata
-    std::fs::create_dir_all(index_path.parent().unwrap_or(Path::new("")))?;
+    if let Some(parent) = index_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     index_store::save_index(&index, &index_path)?;
 
     let commit_hash = clone::head_commit(&clone_dir).unwrap_or_default();

@@ -278,6 +278,7 @@ fn is_example_path(filepath: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::types::{DocSection, Symbol, SymbolKind};

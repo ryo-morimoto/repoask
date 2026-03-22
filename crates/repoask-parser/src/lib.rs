@@ -1,72 +1,32 @@
-pub mod language;
+//! Source code and documentation parsing for repoask.
+//!
+//! Handles TS/JS (via oxc) and Markdown. Pure Rust, WASM-compatible.
+//! For tree-sitter based languages (Rust, Python, Go, etc.), see `repoask-treesitter`.
+
 pub mod markdown;
 pub mod oxc;
-pub mod tree_sitter_parser;
 
-use std::path::Path;
-
-use ignore::WalkBuilder;
 use repoask_core::types::IndexDocument;
 
-use crate::language::{parser_for_extension, ParserKind};
+/// Parse a single file given its path and source content.
+///
+/// Returns extracted index documents (code symbols or doc sections).
+/// Returns an empty vec if the file extension is not supported.
+pub fn parse_file(filepath: &str, source: &str) -> Vec<IndexDocument> {
+    let ext = match filepath.rsplit('.').next() {
+        Some(e) => e,
+        None => return vec![],
+    };
 
-/// Parse all supported files in a directory and return index documents.
-pub fn parse_directory(root: &Path) -> Vec<IndexDocument> {
-    let mut documents = Vec::new();
-
-    let walker = WalkBuilder::new(root)
-        .hidden(true)
-        .git_ignore(true)
-        .git_exclude(true)
-        .build();
-
-    for entry in walker.flatten() {
-        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
-            continue;
+    match ext {
+        "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs" => {
+            let symbols = oxc::extract_ts_symbols(source, filepath);
+            symbols.into_iter().map(IndexDocument::Code).collect()
         }
-
-        let path = entry.path();
-        let ext = match path.extension().and_then(|e| e.to_str()) {
-            Some(e) => e,
-            None => continue,
-        };
-
-        let parser_kind = match parser_for_extension(ext) {
-            Some(k) => k,
-            None => continue,
-        };
-
-        let source = match std::fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(_) => continue, // skip binary/unreadable files
-        };
-
-        let relative_path = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-
-        match parser_kind {
-            ParserKind::Oxc => {
-                let symbols = crate::oxc::extract_ts_symbols(&source, &relative_path);
-                documents.extend(symbols.into_iter().map(IndexDocument::Code));
-            }
-            ParserKind::TreeSitter { language, query } => {
-                let symbols = crate::tree_sitter_parser::extract_symbols(
-                    &source,
-                    &relative_path,
-                    &language,
-                    query,
-                );
-                documents.extend(symbols.into_iter().map(IndexDocument::Code));
-            }
-            ParserKind::Markdown => {
-                let sections = crate::markdown::parse_markdown(&source, &relative_path);
-                documents.extend(sections.into_iter().map(IndexDocument::Doc));
-            }
+        "md" | "mdx" => {
+            let sections = markdown::parse_markdown(source, filepath);
+            sections.into_iter().map(IndexDocument::Doc).collect()
         }
+        _ => vec![],
     }
-
-    documents
 }

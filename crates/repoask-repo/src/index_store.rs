@@ -82,59 +82,31 @@ pub fn load_meta(path: &Path) -> Result<IndexMeta, LoadError> {
 }
 
 /// Error saving index or metadata.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SaveError {
     /// IO error writing file.
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
     /// Bincode encoding error.
+    #[error("encode error: {0}")]
     Encode(bincode::error::EncodeError),
     /// JSON serialization error.
+    #[error("JSON error: {0}")]
     Json(serde_json::Error),
-}
-
-impl std::fmt::Display for SaveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "IO error: {e}"),
-            Self::Encode(e) => write!(f, "encode error: {e}"),
-            Self::Json(e) => write!(f, "JSON error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for SaveError {}
-
-impl From<std::io::Error> for SaveError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
 }
 
 /// Error loading index or metadata.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LoadError {
     /// IO error reading file.
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
     /// Bincode decoding error.
+    #[error("decode error: {0}")]
     Decode(bincode::error::DecodeError),
     /// JSON deserialization error.
+    #[error("JSON error: {0}")]
     Json(serde_json::Error),
-}
-
-impl std::fmt::Display for LoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "IO error: {e}"),
-            Self::Decode(e) => write!(f, "decode error: {e}"),
-            Self::Json(e) => write!(f, "JSON error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for LoadError {}
-
-impl From<std::io::Error> for LoadError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
 }

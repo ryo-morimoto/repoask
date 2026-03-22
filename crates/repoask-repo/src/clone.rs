@@ -6,29 +6,15 @@ use std::process::Command;
 use crate::cache;
 
 /// Error type for clone operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CloneError {
     /// Git command failed.
+    #[error("git clone failed: {0}")]
     GitFailed(String),
     /// IO error during directory operations.
-    Io(std::io::Error),
-}
-
-impl std::fmt::Display for CloneError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::GitFailed(msg) => write!(f, "git clone failed: {msg}"),
-            Self::Io(e) => write!(f, "IO error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for CloneError {}
-
-impl From<std::io::Error> for CloneError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 /// Ensure a shallow clone of the repository exists in the cache.
