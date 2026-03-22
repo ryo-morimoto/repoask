@@ -100,38 +100,46 @@ impl InvertedIndex {
 
 ### WASM (repoask-wasm)
 
+`serde-wasm-bindgen` で `JsValue` を直接 `BoostSignals` にデシリアライズする。
+JSON 文字列化は不要。
+
 ```rust
+use wasm_bindgen::prelude::*;
+
 #[wasm_bindgen]
 impl RepoIndex {
     // 既存
     pub fn search(&self, query: &str, limit: usize) -> Result<String, JsError>;
 
-    // 新規 — signals は JSON 文字列で受け取る
+    // 新規 — signals は JsValue (プレーンオブジェクト) で受け取る
     #[wasm_bindgen(js_name = "searchWithBoost")]
     pub fn search_with_boost(
         &self,
         query: &str,
         limit: usize,
-        signals_json: &str,
-    ) -> Result<String, JsError>;
+        signals: JsValue,
+    ) -> Result<String, JsError> {
+        let signals: BoostSignals = serde_wasm_bindgen::from_value(signals)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        // ...
+    }
 }
 ```
 
 JS 側:
 ```js
-const signals = {
+const results = index.searchWithBoost("validate token", 10, {
   file_boosts: { "src/auth.ts": 2.0 },
   directory_boosts: { "src/auth": 1.5 },
   symbol_boosts: {},
   module_boosts: {},
-};
-const results = index.searchWithBoost("validate token", 10, JSON.stringify(signals));
+});
 ```
 
-JSON 文字列で渡す理由:
-- `HashMap` は wasm-bindgen で直接渡せない
-- `serde_json::from_str` で Rust 側でデシリアライズ
-- WASM FFI boundary を超えるのにもっとも簡潔
+`serde-wasm-bindgen` を使う理由:
+- JS のプレーンオブジェクトをそのまま渡せる (`JSON.stringify` 不要)
+- `HashMap` を含む Rust struct に直接デシリアライズ
+- 既に `repoask-wasm` の依存に含まれている
 
 ## BoostSignals の合成
 
