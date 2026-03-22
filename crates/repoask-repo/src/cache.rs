@@ -90,3 +90,78 @@ pub fn cleanup_repo(owner: &str, repo: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+/// Maximum total cache size in bytes (2 GB).
+const MAX_CACHE_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Evict oldest repository caches until total size is under the limit.
+///
+/// Walks `<cache_dir>/repos/github.com/<owner>/<repo>/` directories,
+/// sorts by modification time (oldest first), and removes repos until
+/// the total size drops below `MAX_CACHE_SIZE`.
+pub fn evict_if_needed() -> std::io::Result<()> {
+    let repos_dir = cache_dir().join("repos/github.com");
+    if !repos_dir.exists() {
+        return Ok(());
+    }
+
+    let mut entries: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    let mut total_size: u64 = 0;
+
+    // Walk owner/repo directories
+    for owner_entry in std::fs::read_dir(&repos_dir)? {
+        let owner_entry = owner_entry?;
+        if !owner_entry.file_type()?.is_dir() {
+            continue;
+        }
+        for repo_entry in std::fs::read_dir(owner_entry.path())? {
+            let repo_entry = repo_entry?;
+            if !repo_entry.file_type()?.is_dir() {
+                continue;
+            }
+            let repo_path = repo_entry.path();
+            let size = dir_size(&repo_path)?;
+            let mtime = repo_entry
+                .metadata()?
+                .modified()
+                .unwrap_or(std::time::UNIX_EPOCH);
+            total_size += size;
+            entries.push((repo_path, size, mtime));
+        }
+    }
+
+    if total_size <= MAX_CACHE_SIZE {
+        return Ok(());
+    }
+
+    // Sort by mtime ascending (oldest first)
+    entries.sort_by_key(|(_, _, mtime)| *mtime);
+
+    for (path, size, _) in &entries {
+        if total_size <= MAX_CACHE_SIZE {
+            break;
+        }
+        let _ = std::fs::remove_dir_all(path);
+        total_size = total_size.saturating_sub(*size);
+    }
+
+    Ok(())
+}
+
+/// Calculate total size of a directory recursively.
+fn dir_size(path: &std::path::Path) -> std::io::Result<u64> {
+    let mut total = 0u64;
+    if path.is_file() {
+        return Ok(path.metadata()?.len());
+    }
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let ft = entry.file_type()?;
+        if ft.is_file() {
+            total += entry.metadata()?.len();
+        } else if ft.is_dir() {
+            total += dir_size(&entry.path())?;
+        }
+    }
+    Ok(total)
+}

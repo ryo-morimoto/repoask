@@ -74,6 +74,9 @@ pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>
     let index = load_or_build_index(owner, repo, ref_spec)?;
     drop(lock_file);
 
+    // Best-effort cache eviction (non-fatal)
+    let _ = cache::evict_if_needed();
+
     Ok(index.search(query, limit))
 }
 
