@@ -5,6 +5,9 @@ use std::path::Path;
 use ignore::WalkBuilder;
 use repoask_core::types::IndexDocument;
 
+/// Maximum file size to parse (10 MB). Larger files are skipped.
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
 /// Summary of skipped or failed files during directory parsing.
 #[derive(Debug, Default)]
 pub struct ParseReport {
@@ -12,6 +15,8 @@ pub struct ParseReport {
     pub unsupported: Vec<String>,
     /// Files that a parser attempted but failed to extract from.
     pub failed: Vec<(String, String)>,
+    /// Files skipped because they exceeded the size limit.
+    pub oversized: Vec<String>,
     /// Total files successfully parsed.
     pub parsed_count: usize,
 }
@@ -38,6 +43,20 @@ pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
         }
 
         let path = entry.path();
+
+        // Skip files exceeding the size limit to avoid OOM on generated/bundled files.
+        if let Ok(meta) = path.metadata() {
+            if meta.len() > MAX_FILE_SIZE {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or_else(|_| path)
+                    .to_string_lossy()
+                    .to_string();
+                report.oversized.push(rel);
+                continue;
+            }
+        }
+
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(_) => continue,

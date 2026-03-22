@@ -10,6 +10,12 @@ use repoask_core::index::InvertedIndex;
 /// Current index format version. Bump when the index structure changes.
 const INDEX_FORMAT_VERSION: u32 = 1;
 
+/// Maximum index file size to load (500 MB). Guards against tampered files.
+const MAX_INDEX_FILE_SIZE: u64 = 500 * 1024 * 1024;
+
+/// Maximum metadata JSON file size to load (1 MB).
+const MAX_META_FILE_SIZE: u64 = 1024 * 1024;
+
 /// Metadata about a cached index for validity checking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexMeta {
@@ -59,7 +65,13 @@ pub fn save_index(index: &InvertedIndex, path: &Path) -> Result<(), SaveError> {
 }
 
 /// Load an index from disk.
+///
+/// Rejects files larger than 500 MB to guard against tampered cache files.
 pub fn load_index(path: &Path) -> Result<InvertedIndex, LoadError> {
+    let file_size = path.metadata()?.len();
+    if file_size > MAX_INDEX_FILE_SIZE {
+        return Err(LoadError::TooLarge(file_size));
+    }
     let bytes = std::fs::read(path)?;
     let config = bincode::config::standard();
     let (index, _) = bincode::serde::decode_from_slice::<InvertedIndex, _>(&bytes, config)
@@ -75,7 +87,13 @@ pub fn save_meta(meta: &IndexMeta, path: &Path) -> Result<(), SaveError> {
 }
 
 /// Load index metadata from JSON.
+///
+/// Rejects files larger than 1 MB.
 pub fn load_meta(path: &Path) -> Result<IndexMeta, LoadError> {
+    let file_size = path.metadata()?.len();
+    if file_size > MAX_META_FILE_SIZE {
+        return Err(LoadError::TooLarge(file_size));
+    }
     let json = std::fs::read_to_string(path)?;
     let meta: IndexMeta = serde_json::from_str(&json).map_err(LoadError::Json)?;
     Ok(meta)
@@ -103,6 +121,9 @@ pub enum LoadError {
     /// IO error reading file.
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// File exceeds the maximum allowed size.
+    #[error("file too large: {0} bytes")]
+    TooLarge(u64),
     /// Bincode decoding error.
     #[error("decode error: {0}")]
     Decode(bincode::error::DecodeError),

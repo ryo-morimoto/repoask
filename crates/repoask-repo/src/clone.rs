@@ -12,9 +12,20 @@ pub enum CloneError {
     /// Git command failed.
     #[error("git clone failed: {0}")]
     GitFailed(String),
+    /// Invalid repository specification (owner, repo, or ref_spec).
+    #[error("invalid repository spec: {0}")]
+    InvalidSpec(String),
     /// IO error during directory operations.
     #[error(transparent)]
     Io(#[from] std::io::Error),
+}
+
+/// Validate that an owner or repo name contains only safe characters.
+fn is_valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
 }
 
 /// Ensure a shallow clone of the repository exists in the cache.
@@ -26,6 +37,18 @@ pub fn ensure_clone(
     repo: &str,
     ref_spec: Option<&str>,
 ) -> Result<PathBuf, CloneError> {
+    if !is_valid_name(owner) {
+        return Err(CloneError::InvalidSpec(format!("invalid owner: {owner:?}")));
+    }
+    if !is_valid_name(repo) {
+        return Err(CloneError::InvalidSpec(format!("invalid repo: {repo:?}")));
+    }
+    if let Some(r) = ref_spec {
+        if r.starts_with('-') {
+            return Err(CloneError::InvalidSpec(format!("invalid ref_spec: {r:?}")));
+        }
+    }
+
     let repo_dir = cache::repo_clone_dir(owner, repo);
 
     if repo_dir.exists() {

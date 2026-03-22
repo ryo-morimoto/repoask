@@ -6,19 +6,19 @@
 
 ### コマンドインジェクション / 引数インジェクション
 
-- [ ] **`clone.rs:68` — owner/repo が git URL に直接埋め込まれる。** `owner = "--upload-pack=malicious"` のような値が `Command::arg()` 経由で渡される。`Command::arg()` はシェル展開しないので shell injection は防げるが、git の引数として解釈される可能性がある。owner/repo を `^[a-zA-Z0-9._-]+$` でバリデーションすべき
-- [ ] **`clone.rs:73-75` — ref_spec が `--branch` に未検証で渡される。** `--` で始まる ref_spec は git 引数として解釈される可能性。先頭が `-` でないことをチェックすべき
+- [x] ~~**`clone.rs:68` — owner/repo が git URL に直接埋め込まれる。**~~ → `ensure_clone()` 冒頭で `is_valid_name()` (`^[a-zA-Z0-9._-]+$` 相当) バリデーション追加済み
+- [x] ~~**`clone.rs:73-75` — ref_spec が `--branch` に未検証で渡される。**~~ → `ensure_clone()` で先頭 `-` チェック追加済み
 
 ### パストラバーサル
 
-- [ ] **`cache.rs:27-28` — owner/repo がファイルパスに直接結合される。** `owner = "../../../etc"` でキャッシュディレクトリ外に脱出可能。`join()` 後のパスが `cache_dir()` 配下であることを `canonicalize()` でチェックすべき
-- [ ] **`cache.rs:52-55` — `cleanup_all()` が `REPOASK_CACHE_DIR` 環境変数のパスを `remove_dir_all` する。** `REPOASK_CACHE_DIR=/` が設定されていた場合、ルートディレクトリ削除を試みる。最低限「repoask」を含むパスであることをチェックすべき
+- [x] ~~**`cache.rs:27-28` — owner/repo がファイルパスに直接結合される。**~~ → `repo_cache_dir()` に `is_safe_path_component()` assert 追加済み
+- [x] ~~**`cache.rs:52-55` — `cleanup_all()` が `REPOASK_CACHE_DIR` 環境変数のパスを `remove_dir_all` する。**~~ → パスに "repoask" を含むかチェック追加済み
 
 ### 信頼境界
 
-- [ ] **`index_store.rs:62-67` — キャッシュから bincode デシリアライズする際にサイズ制限がない。** 改ざんされた `index.bin` が数GB のメモリ確保を要求する可能性。`decode_from_slice` 前にファイルサイズの上限チェック (例: 500MB) を入れるべき
-- [ ] **`index_store.rs:78-81` — `index.meta.json` の JSON デシリアライズに入力長制限がない。** 悪意のある JSON でメモリ枯渇の可能性（低リスクだが防御的に制限すべき）
-- [ ] **`parse_directory` — ファイルサイズ制限なし。** 悪意のあるリポジトリに 10GB の `.ts` ファイルが含まれていた場合、`read_to_string` で OOM。ファイルサイズ上限 (例: 10MB) を設けるべき
+- [x] ~~**`index_store.rs:62-67` — キャッシュから bincode デシリアライズする際にサイズ制限がない。**~~ → `load_index()` に 500MB 上限チェック + `TooLarge` エラー追加済み
+- [x] ~~**`index_store.rs:78-81` — `index.meta.json` の JSON デシリアライズに入力長制限がない。**~~ → `load_meta()` に 1MB 上限チェック追加済み
+- [x] ~~**`parse_directory` — ファイルサイズ制限なし。**~~ → `parse_directory()` に 10MB 上限チェック + `oversized` レポート追加済み
 
 ### ディスク消費
 
@@ -51,7 +51,7 @@
 
 ### I/O
 
-- [ ] **`parse_directory` — `read_to_string` はファイル全体をメモリに載せる。** 大きなファイル (生成されたコードやバンドル) で問題。ファイルサイズチェック→スキップの方が安全
+- [x] ~~**`parse_directory` — `read_to_string` はファイル全体をメモリに載せる。**~~ → 10MB 上限チェック追加済み（セキュリティ > 信頼境界と同一修正）
 - [ ] **`index_store::save_index` — `encode_to_vec` でバイト列全体をメモリに構築してから `write`。** 大きなインデックスでは `BufWriter` + streaming encode の方がメモリ効率が良い
 - [ ] **`clone.rs:79` — `cmd.output()` は git の stdout/stderr を全てメモリにバッファする。** 巨大リポジトリの clone で git が大量の progress 出力を生成した場合にメモリ消費が増える。`stdout(Stdio::null())` + `stderr(Stdio::piped())` にすべき
 
