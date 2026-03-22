@@ -164,7 +164,7 @@ L4:   git 具体 → git 抽象          (platform-specific)
 - [x] ~~`InvertedIndex` の bincode ファイル保存/読み込みロジック~~ → `index_store.rs` で実装済み
 - [x] ~~`IndexMeta` (commit hash, format version, timestamp)~~ → `index_store.rs` で実装済み
 - [x] ~~`repo.rs` の `load_or_build_index()` 内で `unwrap_or(Path::new(""))` を使用~~ → `if let Some(parent)` パターンに修正済み
-- [ ] `clone.rs` の atomic rename (`std::fs::rename`) はクロスファイルシステムで失敗する — `/tmp` とホームディレクトリが別パーティションのケース
+- [x] ~~`clone.rs` の atomic rename はクロスファイルシステムで失敗する~~ → rename 失敗時に `copy_dir_recursive` + 削除にフォールバック
 - [x] ~~`clone.rs` で clone 失敗時の tmp ディレクトリ cleanup が `let _ =` で無視されている~~ → rename 失敗時にも tmp cleanup を追加済み
 - [x] ~~`repo.rs` のファイルロック解放が `let _ = lock_file.unlock()` で明示的にされているが、`Drop` で十分~~ → `drop(lock_file)` に変更済み
 - [x] ~~CLI の `main.rs` で `eprintln!` を直接使っている~~ → `#![allow(clippy::print_stderr, reason = "CLI binary")]` で許可済み
