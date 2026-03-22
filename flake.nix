@@ -31,6 +31,7 @@
             gcc
             pkg-config
             libiconv # macOS compat
+            lld # WASM linker for cdylib targets
 
             # === Git (for repoask-repo clone operations) ===
             git
