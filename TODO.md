@@ -112,8 +112,15 @@
 - [ ] `index_store` の save/load ラウンドトリップテストが未作成
 - [ ] `clone.rs` / `repo.rs` のテストは repo spec パースのみ — clone 自体のテストはネットワーク依存で未作成
 
-## 未実装の crate (Step 3 以降)
+## SKILL.md / Agent Skills
+
+- [x] ~~`SKILL.md` 作成~~ → 実装済み
+- [ ] SKILL.md にキャッシュディレクトリのパスを動的に取得する方法が書かれていない — `$XDG_CACHE_HOME` 対応を記載すべき。現状は `~/.cache/repoask/...` がハードコードされている
+- [ ] SKILL.md の「Read a specific code range after search」で `cat | sed -n` を案内しているが、agent は Read ツールを使うべき。agent 環境に応じた案内にすべき
+- [ ] SKILL.md に `--format json` がデフォルトであることは書いてあるが、agent がパースする際の JSON lines の改行区切りについて明記すべき（各行が独立した JSON オブジェクト）
+- [ ] SKILL.md にエラー時の exit code / stderr 出力パターンが未記載 — agent がエラーハンドリングできない
+
+## 未実装の crate (Step 4 以降)
 
 - [ ] `repoask-wasm`: wasm-bindgen エントリポイント
 - [ ] `repoask-node`: napi-rs npm 配布
-- [ ] `SKILL.md`: agent skill 定義ファイル
