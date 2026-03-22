@@ -9,8 +9,8 @@
 mod parser;
 mod queries;
 
+use repoask_core::types::IndexDocument;
 pub use repoask_core::types::ParseOutcome;
-use repoask_core::types::{IndexDocument, Symbol};
 
 /// Error type for tree-sitter parse operations.
 #[derive(Debug, thiserror::Error)]
