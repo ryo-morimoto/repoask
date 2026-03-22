@@ -1,136 +1,82 @@
 /**
- * PoC: bit clone a real GitHub repo into memory
+ * PoC: Trees API + raw fetch → simulated repoask-wasm search
  *
- * Key finding: bit's rawFetch uses MoonBit CPS (continuation-passing style).
- * The lib.js wrapper must pass _cont/_err_cont callbacks.
- * We wrap rawFetch in a Promise manually.
+ * Validates the full browser-compatible pipeline:
+ * 1. Fetch file tree from GitHub (Trees API, CORS OK)
+ * 2. Fetch file contents (raw.githubusercontent.com, CORS OK)
+ * 3. Feed files to search index (simulated, will be repoask-wasm)
  *
  * Usage: npm run poc
  */
 
-// Use the raw exports to bypass the lib.js wrapper (which may be out of sync)
-import {
-  createMemoryHost,
-  init,
-  fetch,
-  checkout,
-  createFetchTransport,
-  type BitGitBackend,
-} from "@mizchi/bit/lib";
+import { fetchRepoFiles } from "./repo-fetcher.js";
 
-const REPO_URL = "https://github.com/colinhacks/zod.git";
-const REPO_ROOT = "/repo";
+const OWNER = "colinhacks";
+const REPO = "zod";
 const REF = "main";
 
-// Extensions that repoask-parser handles (oxc + markdown)
-const REPOASK_EXTENSIONS = new Set([
-  "ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs",
-  "md", "mdx",
-]);
-
 async function main() {
-  console.log(`[poc] Cloning ${REPO_URL} (ref: ${REF}) into memory...`);
+  console.log(`[poc] Fetching ${OWNER}/${REPO}@${REF}...`);
 
-  const backend = createMemoryHost();
-  const transport = createFetchTransport(globalThis.fetch);
-
-  // Step 1: init + fetch
-  const t0 = performance.now();
-  init(backend, REPO_ROOT, REF);
-
-  console.log("[poc] Fetching...");
-  const fetchResult = await fetch(backend, REPO_ROOT, REPO_URL, transport, {
-    refspec: REF,
+  const result = await fetchRepoFiles(OWNER, REPO, REF, {
+    extensions: ["ts", "tsx", "js", "md", "mdx"],
+    concurrency: 15,
+    onProgress: (fetched, total) => {
+      if (fetched % 50 === 0 || fetched === total) {
+        console.log(`[poc] Progress: ${fetched}/${total} files`);
+      }
+    },
   });
-  console.log(`[poc] Fetch result: ${JSON.stringify(fetchResult)}`);
 
-  // Step 2: checkout
-  console.log("[poc] Checking out...");
-  const target = fetchResult.commitId ?? "HEAD";
-  checkout(backend, REPO_ROOT, target);
+  console.log(`\n[poc] Fetch completed in ${result.durationMs.toFixed(0)}ms`);
+  console.log(`[poc] Commit: ${result.commitSha}`);
+  console.log(`[poc] Files fetched: ${result.files.length}`);
+  console.log(`[poc] Files skipped: ${result.skipped.length}`);
+
+  // Summarize by extension
+  const byExt = new Map<string, number>();
+  let totalBytes = 0;
+  for (const file of result.files) {
+    const ext = file.path.split(".").pop() ?? "?";
+    byExt.set(ext, (byExt.get(ext) ?? 0) + 1);
+    totalBytes += file.content.length;
+  }
+
+  console.log(`[poc] Total size: ${(totalBytes / 1024).toFixed(0)} KB`);
+  console.log("[poc] By extension:");
+  for (const [ext, count] of [...byExt.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  .${ext}: ${count} files`);
+  }
+
+  // Show sample files
+  console.log("\n[poc] Sample files:");
+  for (const file of result.files.slice(0, 10)) {
+    console.log(`  ${file.path} (${file.content.length} bytes)`);
+  }
+
+  // Simulate what repoask-wasm would do
+  console.log("\n[poc] Simulating repoask-wasm addFile() + build() + search()...");
+  const t0 = performance.now();
+
+  // In the real version:
+  // const index = new RepoIndex();
+  // for (const file of result.files) {
+  //   index.addFile(file.path, file.content);
+  // }
+  // index.build();
+  // const results = index.search("parse error validation", 10);
 
   const t1 = performance.now();
-  console.log(`[poc] Clone completed in ${(t1 - t0).toFixed(0)}ms`);
+  console.log(`[poc] Simulated index build: ${(t1 - t0).toFixed(0)}ms`);
 
-  // Step 3: Walk filesystem
-  const files = walkDirectory(backend, REPO_ROOT, "");
-  console.log(`[poc] Total files found: ${files.length}`);
-
-  // Step 4: Classify
-  const supported: string[] = [];
-  const unsupported: string[] = [];
-  for (const filepath of files) {
-    const ext = filepath.split(".").pop() ?? "";
-    if (REPOASK_EXTENSIONS.has(ext)) {
-      supported.push(filepath);
-    } else {
-      unsupported.push(filepath);
+  if (result.skipped.length > 0) {
+    console.log(`\n[poc] Skipped files (first 10):`);
+    for (const path of result.skipped.slice(0, 10)) {
+      console.log(`  ${path}`);
     }
   }
 
-  console.log(`[poc] Supported by repoask-parser: ${supported.length} files`);
-  console.log(`[poc] Unsupported: ${unsupported.length} files`);
-
-  // Step 5: Read supported files
-  console.log("\n[poc] Sample supported files:");
-  let totalBytes = 0;
-  let fileCount = 0;
-  for (const filepath of supported) {
-    try {
-      const content = readFileAsString(backend, `${REPO_ROOT}/${filepath}`);
-      totalBytes += content.length;
-      fileCount++;
-      if (fileCount <= 10) {
-        console.log(`  ${filepath} (${content.length} bytes)`);
-      }
-    } catch {
-      // skip unreadable
-    }
-  }
-
-  console.log(
-    `\n[poc] Total: ${fileCount} files, ${(totalBytes / 1024).toFixed(0)} KB`
-  );
-  console.log("[poc] Integration pattern validated with real repo.");
-}
-
-function walkDirectory(
-  backend: BitGitBackend,
-  root: string,
-  relativePath: string,
-): string[] {
-  const fullPath = relativePath ? `${root}/${relativePath}` : root;
-  const entries: string[] = [];
-
-  let children: string[];
-  try {
-    children = Array.from(backend.readdir(fullPath));
-  } catch {
-    return entries;
-  }
-
-  for (const name of children) {
-    if (name === ".git") continue;
-
-    const childRelative = relativePath ? `${relativePath}/${name}` : name;
-    const childFull = `${root}/${childRelative}`;
-
-    if (backend.isDir(childFull)) {
-      entries.push(...walkDirectory(backend, root, childRelative));
-    } else if (backend.isFile(childFull)) {
-      entries.push(childRelative);
-    }
-  }
-
-  return entries;
-}
-
-function readFileAsString(backend: BitGitBackend, path: string): string {
-  const data = backend.readFile(path);
-  if (typeof data === "string") return data;
-  if (data instanceof Uint8Array) return new TextDecoder().decode(data);
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  return new TextDecoder().decode(Uint8Array.from(data as ArrayLike<number>));
+  console.log("\n[poc] Pipeline validated. Ready for repoask-wasm integration.");
 }
 
 main().catch((err) => {
