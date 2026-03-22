@@ -65,7 +65,11 @@ fn clone_fresh(
     ref_spec: Option<&str>,
     target: &Path,
 ) -> Result<PathBuf, CloneError> {
-    let tmp_dir = cache::cache_dir().join(format!("tmp/{}-{}-{}", owner, repo, std::process::id()));
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_dir = cache::cache_dir().join(format!("tmp/{owner}-{repo}-{unique}"));
 
     // Clean up any stale tmp dir
     if tmp_dir.exists() {
