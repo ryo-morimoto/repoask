@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +43,31 @@ pub struct InvertedIndex {
     field_stats: [FieldStats; NUM_FIELDS],
 }
 
+/// Helper for min-heap top-k selection. Ordered by score ascending (min first),
+/// with ties broken by doc_id descending so the heap evicts the least desirable.
+#[derive(PartialEq)]
+struct ScoredDoc {
+    doc_id: DocId,
+    score: f32,
+}
+
+impl Eq for ScoredDoc {}
+
+impl PartialOrd for ScoredDoc {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScoredDoc {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score
+            .partial_cmp(&other.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| other.doc_id.cmp(&self.doc_id))
+    }
+}
+
 impl InvertedIndex {
     pub fn build(docs: Vec<IndexDocument>) -> Self {
         let mut index = Self {
@@ -54,14 +80,15 @@ impl InvertedIndex {
             }),
         };
 
+        let mut term_freq_buf = HashMap::new();
         for doc in docs {
-            index.add_document(doc);
+            index.add_document(doc, &mut term_freq_buf);
         }
 
         index
     }
 
-    fn add_document(&mut self, doc: IndexDocument) {
+    fn add_document(&mut self, doc: IndexDocument, term_freq_buf: &mut HashMap<String, u16>) {
         let doc_id = self.documents.len() as DocId;
         let mut lengths = [0u16; NUM_FIELDS];
 
@@ -72,13 +99,18 @@ impl InvertedIndex {
                 // Field 0: symbol name tokens
                 let name_tokens = tokenize_identifier(&symbol.name);
                 lengths[FIELD_SYMBOL_NAME as usize] = name_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &name_tokens);
+                self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &name_tokens, term_freq_buf);
 
                 // Field 1: doc comment tokens
                 if let Some(ref comment) = symbol.doc_comment {
                     let comment_tokens = tokenize_text(comment);
                     lengths[FIELD_DOC_CONTENT as usize] = comment_tokens.len() as u16;
-                    self.add_field_tokens(doc_id, FIELD_DOC_CONTENT, &comment_tokens);
+                    self.add_field_tokens(
+                        doc_id,
+                        FIELD_DOC_CONTENT,
+                        &comment_tokens,
+                        term_freq_buf,
+                    );
                 }
 
                 // Field 2: parameter name tokens
@@ -88,12 +120,12 @@ impl InvertedIndex {
                     .flat_map(|p| tokenize_identifier(p))
                     .collect();
                 lengths[FIELD_PARAMS as usize] = param_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_PARAMS, &param_tokens);
+                self.add_field_tokens(doc_id, FIELD_PARAMS, &param_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&symbol.filepath);
                 lengths[FIELD_FILEPATH as usize] = path_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens);
+                self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 self.documents.push(StoredDoc::Code {
                     filepath: symbol.filepath.clone(),
@@ -111,12 +143,12 @@ impl InvertedIndex {
                     heading_tokens.extend(tokenize_text(ancestor));
                 }
                 lengths[FIELD_SYMBOL_NAME as usize] = heading_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &heading_tokens);
+                self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &heading_tokens, term_freq_buf);
 
                 // Field 1: body content tokens
                 let body_tokens = tokenize_text(&section.content);
                 lengths[FIELD_DOC_CONTENT as usize] = body_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_DOC_CONTENT, &body_tokens);
+                self.add_field_tokens(doc_id, FIELD_DOC_CONTENT, &body_tokens, term_freq_buf);
 
                 // Field 2: code symbols extracted from fenced blocks
                 let code_sym_tokens: Vec<String> = section
@@ -125,12 +157,12 @@ impl InvertedIndex {
                     .flat_map(|s| tokenize_identifier(s))
                     .collect();
                 lengths[FIELD_PARAMS as usize] = code_sym_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_PARAMS, &code_sym_tokens);
+                self.add_field_tokens(doc_id, FIELD_PARAMS, &code_sym_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&section.filepath);
                 lengths[FIELD_FILEPATH as usize] = path_tokens.len() as u16;
-                self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens);
+                self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 let preview = section.content.chars().take(200).collect::<String>();
 
@@ -153,21 +185,24 @@ impl InvertedIndex {
         self.field_lengths.push(lengths);
     }
 
-    fn add_field_tokens(&mut self, doc_id: DocId, field_id: FieldId, tokens: &[String]) {
-        let mut term_freqs: HashMap<&str, u16> = HashMap::new();
+    fn add_field_tokens(
+        &mut self,
+        doc_id: DocId,
+        field_id: FieldId,
+        tokens: &[String],
+        term_freq_buf: &mut HashMap<String, u16>,
+    ) {
+        term_freq_buf.clear();
         for token in tokens {
-            *term_freqs.entry(token.as_str()).or_insert(0) += 1;
+            *term_freq_buf.entry(token.clone()).or_insert(0) += 1;
         }
 
-        for (term, freq) in term_freqs {
-            self.postings
-                .entry(term.to_string())
-                .or_default()
-                .push(Posting {
-                    doc_id,
-                    field_id,
-                    term_freq: freq,
-                });
+        for (term, freq) in term_freq_buf.drain() {
+            self.postings.entry(term).or_default().push(Posting {
+                doc_id,
+                field_id,
+                term_freq: freq,
+            });
         }
     }
 
@@ -207,17 +242,26 @@ impl InvertedIndex {
             }
         }
 
-        let mut scored: Vec<(DocId, f32)> = doc_scores.into_iter().collect();
-        scored.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.0.cmp(&b.0))
-        });
-        scored.truncate(limit);
+        // Top-k selection using a min-heap of size `limit` — O(n log k).
+        let mut heap: BinaryHeap<Reverse<ScoredDoc>> = BinaryHeap::with_capacity(limit + 1);
+        for (doc_id, score) in doc_scores {
+            heap.push(Reverse(ScoredDoc { doc_id, score }));
+            if heap.len() > limit {
+                heap.pop();
+            }
+        }
 
-        scored
+        let mut top_k: Vec<ScoredDoc> = heap.into_iter().map(|Reverse(sd)| sd).collect();
+        top_k.sort_unstable_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
+
+        top_k
             .into_iter()
-            .map(|(doc_id, score)| self.to_search_result(doc_id, score))
+            .map(|sd| self.to_search_result(sd.doc_id, sd.score))
             .collect()
     }
 

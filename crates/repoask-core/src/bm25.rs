@@ -23,7 +23,7 @@ impl Bm25Scorer {
     }
 
     pub fn weight(&self, field_id: FieldId) -> f32 {
-        self.weights[field_id as usize]
+        self.weights.get(field_id as usize).copied().unwrap_or(0.0)
     }
 
     /// Compute IDF for a term given its document frequency and total doc count.
