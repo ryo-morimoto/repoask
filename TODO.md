@@ -114,11 +114,25 @@
 
 ## SKILL.md / Agent Skills
 
+原則: **SKILL.md は必要最低限の文量に保つ。** agent のコンテキストウィンドウを圧迫しないことが最優先。agentが行動を起こすのに不要な説明・背景・Tipsは削るか、別ファイル (README等) に移す。
+
 - [x] ~~`SKILL.md` 作成~~ → 実装済み
-- [ ] SKILL.md にキャッシュディレクトリのパスを動的に取得する方法が書かれていない — `$XDG_CACHE_HOME` 対応を記載すべき。現状は `~/.cache/repoask/...` がハードコードされている
-- [ ] SKILL.md の「Read a specific code range after search」で `cat | sed -n` を案内しているが、agent は Read ツールを使うべき。agent 環境に応じた案内にすべき
-- [ ] SKILL.md に `--format json` がデフォルトであることは書いてあるが、agent がパースする際の JSON lines の改行区切りについて明記すべき（各行が独立した JSON オブジェクト）
-- [ ] SKILL.md にエラー時の exit code / stderr 出力パターンが未記載 — agent がエラーハンドリングできない
+
+### 削減対象 (現在122行 → 目標60行以下)
+
+- [ ] **「What this tool does」セクション削除。** agentは「いつ使うか」がわかれば十分。内部技術 (BM25等) の説明は不要
+- [ ] **「When to use」を1-2行に圧縮。** 4つの箇条書きは冗長。「外部GitHubリポジトリのコード・ドキュメントを自然言語で検索するとき」の1文で十分
+- [ ] **「Supported languages」セクション削除。** agentの行動判断に影響しない。拡張子の列挙はツール内部の話
+- [ ] **「Usage patterns」セクションの3つの例を削除。** コマンド構文と出力フォーマットがあれば agent は自分で使い方を導出できる。例は1つあれば十分
+- [ ] **「Read a specific code range after search」セクション削除。** `cat | sed -n` はagent環境依存。agentは `start_line`/`end_line` を見れば自分で読める
+- [ ] **「Tips」セクション削除またはOutput formatに統合。** 「score は相対値」だけが有用、他はagentにとって自明
+- [ ] **cleanup の説明を1行に圧縮。** 独立セクション不要
+- [ ] **Output format の3つのJSON例を1つの統合例に。** 3バリアントの構造は JSON キー名 (`Code`/`Doc`/`Example`) とフィールド一覧の表で十分
+
+### 不足情報の追記 (最小限で)
+
+- [ ] エラー時の振る舞い: exit code 1 + stderr にエラーメッセージ (1行で記載)
+- [ ] JSON lines: 各行が独立したJSONオブジェクト (Output format に1文追記)
 
 ## 未実装の crate (Step 4 以降)
 
