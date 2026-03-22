@@ -1,0 +1,107 @@
+---
+source: crates/repoask-parser/src/markdown.rs
+expression: sections
+---
+[
+  {
+    "filepath": "README.md",
+    "section_title": "repoask",
+    "heading_hierarchy": [
+      "repoask"
+    ],
+    "content": "A code search tool.",
+    "code_symbols": [],
+    "start_line": 1,
+    "end_line": 4
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "Installation",
+    "heading_hierarchy": [
+      "repoask",
+      "Installation"
+    ],
+    "content": "```bash\ncargo install repoask\n```",
+    "code_symbols": [
+      "cargo",
+      "install",
+      "repoask"
+    ],
+    "start_line": 5,
+    "end_line": 10
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "Usage",
+    "heading_hierarchy": [
+      "repoask",
+      "Usage"
+    ],
+    "content": "",
+    "code_symbols": [],
+    "start_line": 11,
+    "end_line": 12
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "Basic search",
+    "heading_hierarchy": [
+      "repoask",
+      "Usage",
+      "Basic search"
+    ],
+    "content": "```typescript\nimport { search } from \"repoask\";\nconst results = search(\"vercel/next.js\", \"middleware\");\n```",
+    "code_symbols": [
+      "const",
+      "from",
+      "import",
+      "js",
+      "middleware",
+      "next",
+      "repoask",
+      "results",
+      "search",
+      "vercel"
+    ],
+    "start_line": 13,
+    "end_line": 19
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "Advanced options",
+    "heading_hierarchy": [
+      "repoask",
+      "Usage",
+      "Advanced options"
+    ],
+    "content": "Use `--dir` and `--ext` to filter.",
+    "code_symbols": [],
+    "start_line": 20,
+    "end_line": 23
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "API Reference",
+    "heading_hierarchy": [
+      "repoask",
+      "API Reference"
+    ],
+    "content": "",
+    "code_symbols": [],
+    "start_line": 24,
+    "end_line": 25
+  },
+  {
+    "filepath": "README.md",
+    "section_title": "`search(repo, query)`",
+    "heading_hierarchy": [
+      "repoask",
+      "API Reference",
+      "`search(repo, query)`"
+    ],
+    "content": "Returns matching symbols and documentation.",
+    "code_symbols": [],
+    "start_line": 26,
+    "end_line": 28
+  }
+]

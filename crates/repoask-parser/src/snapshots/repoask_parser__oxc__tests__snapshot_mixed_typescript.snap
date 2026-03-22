@@ -1,0 +1,75 @@
+---
+source: crates/repoask-parser/src/oxc.rs
+expression: symbols
+---
+[
+  {
+    "name": "AuthService",
+    "kind": "Class",
+    "filepath": "src/auth.ts",
+    "start_line": 3,
+    "end_line": 8,
+    "doc_comment": null,
+    "params": []
+  },
+  {
+    "name": "constructor",
+    "kind": "Method",
+    "filepath": "src/auth.ts",
+    "start_line": 4,
+    "end_line": 4,
+    "doc_comment": null,
+    "params": [
+      "db"
+    ]
+  },
+  {
+    "name": "validateToken",
+    "kind": "Method",
+    "filepath": "src/auth.ts",
+    "start_line": 5,
+    "end_line": 7,
+    "doc_comment": null,
+    "params": [
+      "token"
+    ]
+  },
+  {
+    "name": "AuthConfig",
+    "kind": "Interface",
+    "filepath": "src/auth.ts",
+    "start_line": 10,
+    "end_line": 13,
+    "doc_comment": null,
+    "params": []
+  },
+  {
+    "name": "AuthResult",
+    "kind": "Type",
+    "filepath": "src/auth.ts",
+    "start_line": 15,
+    "end_line": 15,
+    "doc_comment": null,
+    "params": []
+  },
+  {
+    "name": "createAuth",
+    "kind": "Function",
+    "filepath": "src/auth.ts",
+    "start_line": 17,
+    "end_line": 17,
+    "doc_comment": null,
+    "params": [
+      "config"
+    ]
+  },
+  {
+    "name": "Role",
+    "kind": "Enum",
+    "filepath": "src/auth.ts",
+    "start_line": 19,
+    "end_line": 19,
+    "doc_comment": null,
+    "params": []
+  }
+]

@@ -1029,6 +1029,7 @@ dependencies = [
 name = "repoask-parser"
 version = "0.1.0"
 dependencies = [
+ "insta",
  "oxc_allocator",
  "oxc_ast",
  "oxc_parser",
@@ -1050,6 +1051,7 @@ dependencies = [
  "repoask-treesitter",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 

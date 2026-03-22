@@ -222,4 +222,43 @@ mod tests {
         assert_eq!(sections[0].start_line, 1);
         assert_eq!(sections[1].start_line, 5);
     }
+
+    // -----------------------------------------------------------------------
+    // Snapshot tests (insta)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn snapshot_readme_like() {
+        let md = r#"# repoask
+
+A code search tool.
+
+## Installation
+
+```bash
+cargo install repoask
+```
+
+## Usage
+
+### Basic search
+
+```typescript
+import { search } from "repoask";
+const results = search("vercel/next.js", "middleware");
+```
+
+### Advanced options
+
+Use `--dir` and `--ext` to filter.
+
+## API Reference
+
+### `search(repo, query)`
+
+Returns matching symbols and documentation.
+"#;
+        let sections = parse_markdown(md, "README.md");
+        insta::assert_json_snapshot!(sections);
+    }
 }

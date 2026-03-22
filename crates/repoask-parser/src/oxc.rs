@@ -385,4 +385,34 @@ function validateToken(token: string): Payload { }
         assert_eq!(symbols[0].start_line, 3);
         assert_eq!(symbols[0].end_line, 3);
     }
+
+    // -----------------------------------------------------------------------
+    // Snapshot tests (insta)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn snapshot_mixed_typescript() {
+        let source = r#"
+/** User authentication service */
+export class AuthService {
+    constructor(private db: Database) {}
+    async validateToken(token: string): Promise<User> {
+        return this.db.findByToken(token);
+    }
+}
+
+export interface AuthConfig {
+    secret: string;
+    expiry: number;
+}
+
+export type AuthResult = { ok: true; user: User } | { ok: false; error: string };
+
+export const createAuth = (config: AuthConfig) => new AuthService(config);
+
+enum Role { Admin, User, Guest }
+"#;
+        let symbols = extract_ts_symbols(source, "src/auth.ts");
+        insta::assert_json_snapshot!(symbols);
+    }
 }

@@ -473,4 +473,79 @@ mod tests {
         let results = index.search("parse", 10);
         insta::assert_json_snapshot!(results);
     }
+
+    // -----------------------------------------------------------------------
+    // Property-based tests (proptest)
+    // -----------------------------------------------------------------------
+
+    mod property {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn arb_symbol() -> impl Strategy<Value = IndexDocument> {
+            (
+                "[a-z]{2,8}[A-Z][a-z]{2,8}",
+                "[a-z]{1,4}/[a-z]{1,8}\\.[a-z]{1,3}",
+            )
+                .prop_map(|(name, path)| make_symbol(&name, &path))
+        }
+
+        fn arb_doc() -> impl Strategy<Value = IndexDocument> {
+            (
+                "[A-Z][a-z]{3,12}",
+                "[a-z ]{10,50}",
+                "[a-z]{1,4}/[a-z]{1,8}\\.md",
+            )
+                .prop_map(|(title, content, path)| make_doc(&title, &content, &path))
+        }
+
+        fn arb_docs() -> impl Strategy<Value = Vec<IndexDocument>> {
+            prop::collection::vec(prop_oneof![arb_symbol(), arb_doc()], 1..50)
+        }
+
+        proptest! {
+            /// All search result scores must be non-negative.
+            #[test]
+            fn scores_are_non_negative(
+                docs in arb_docs(),
+                query in "[a-z]{2,8}( [a-z]{2,8}){0,3}",
+            ) {
+                let index = InvertedIndex::build(docs);
+                let results = index.search(&query, 20);
+                for result in &results {
+                    prop_assert!(result.score() >= 0.0, "negative score: {}", result.score());
+                }
+            }
+
+            /// Search result count never exceeds the limit.
+            #[test]
+            fn result_count_within_limit(
+                docs in arb_docs(),
+                query in "[a-z]{2,8}",
+                limit in 1_usize..20,
+            ) {
+                let index = InvertedIndex::build(docs);
+                let results = index.search(&query, limit);
+                prop_assert!(results.len() <= limit);
+            }
+
+            /// Results are sorted by score descending.
+            #[test]
+            fn results_sorted_by_score(
+                docs in arb_docs(),
+                query in "[a-z]{2,8}( [a-z]{2,8}){0,2}",
+            ) {
+                let index = InvertedIndex::build(docs);
+                let results = index.search(&query, 50);
+                for window in results.windows(2) {
+                    prop_assert!(
+                        window[0].score() >= window[1].score(),
+                        "results not sorted: {} < {}",
+                        window[0].score(),
+                        window[1].score(),
+                    );
+                }
+            }
+        }
+    }
 }
