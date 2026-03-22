@@ -57,15 +57,86 @@
 
 ## Lint / コード品質
 
-- [ ] `missing_docs` warnings を解消する (99件: struct field 37, variant 14, struct 9, module 8, function 7, method 6, const 5, enum 3, type alias 2, crate 2)
+- [ ] `missing_docs` warnings を解消する (84件: repoask-core 82件 + repoask-parser 2件。struct field 37, variant 14, struct 9, module 10, function 7, method 8, const 5, enum 3, type alias 2, crate 1)
 - [ ] `unnecessary qualification` warnings を解消する (3件, `cargo fix` で自動修正可能)
 - [x] ~~clippy をインストールして pedantic/nursery/restriction lint を通す~~ → `[workspace.lints]` + `clippy.toml` で設定、flake.nix に clippy 追加済み
 - [x] ~~`expect_used` / `unwrap_used` が `deny` に設定された — `tree_sitter_parser.rs:13` の `expect()` を `ok_or()` + `?` に置き換える~~ → repoask-treesitter 分離時に修正済み
 - [x] ~~テストコード内の `unwrap()` / `panic!()` に `#[cfg(test)]` 用の lint 除外を追加する~~ → 全テストモジュールに `#[allow(..., reason = "...")]` 追加済み
 
+## ParseProvider アーキテクチャ（優先度: 高）
+
+設計: `docs/plans/parser-provider.md`
+
+パーサー選択を trait で抽象化し、platform ごとに最適な実装を差し替え可能にする。
+WASM サイズ肥大化を防ぎつつ、対応言語を段階的に拡張できる構造にする。
+
+### Step 1: ParseProvider trait 導入
+
+以下の既存課題をまとめて解決する:
+
+- [ ] **`ParseOutcome` / `ParseError` の重複を解消。** `repoask-parser` と `repoask-treesitter` で同一構造の enum が2箇所に存在。`repoask-core` に `ParseOutcome` を定義して両パーサーが再利用する
+- [ ] **`parse_file_lenient` の戻り値型を統一。** repoask-parser は `Vec<IndexDocument>`、repoask-treesitter は `Option<Vec<IndexDocument>>`。シグネチャを揃える
+- [ ] **`ParseProvider` trait を `repoask-core` に定義。** `fn parse_file(&self, filepath, source) -> Result<Option<Vec<IndexDocument>>, ParseError>`
+- [ ] **`NativeParseProvider` を `repoask-repo` に実装。** 現在の `parse.rs` のディスパッチロジック (repoask-parser → repoask-treesitter fallback) を移植
+- [ ] **`WasmParseProvider` を `repoask-wasm` に実装。** 現在は `repoask_parser::parse_file_lenient()` 直接呼び出し → trait 経由に変更。Step 2 で動的ロード機構の拡張点になる
+
+### Step 2 以降（今は実装しない）
+
+- [ ] Web 側に動的ロード機構を追加。tree-sitter grammar を個別 `.wasm` として配布、`registerGrammar(ext, wasmBytes)` で登録
+- [ ] CLI 側の言語パーサーを feature flag で選択可能にする
+
+## Boost Signals アーキテクチャ（優先度: 高）
+
+設計: `docs/plans/boost-signals.md`
+
+4階層 (module/directory/file/symbol) の外部ランキング信号で BM25 スコアを補強する。
+git history, call graph 等のデータから信号を計算し、プラットフォーム間でランキングを一致させる。
+
+### 4層アーキテクチャ
+
+```
+L1+2: 階層的重み付け + 4層具体     (repoask-core)
+L3:   git 抽象 → 重み計算ロジック  (repoask-core)
+L4:   git 具体 → git 抽象          (platform-specific)
+```
+
+### Step 1: BoostSignals + search_with_boost
+
+- [ ] `BoostSignals` 型を `types.rs` に追加 (`module_boosts`, `directory_boosts`, `file_boosts`, `symbol_boosts` の4つの `HashMap`)
+- [ ] `Normalization` enum (`Log1p` / `Saturate` / `None`) を追加
+- [ ] `RankingConfig` struct を追加
+- [ ] `InvertedIndex::search_with_boost()` を `index.rs` に実装。スコア計算: `bm25 * (1.0 + normalized(sum_of_boosts))`
+- [ ] 既存の `search()` は変更なし (後方互換)
+- [ ] WASM API に `searchWithBoost(query, limit, signals: JsValue)` を追加 (`serde-wasm-bindgen` で直接デシリアライズ)
+- [ ] テスト: ブースト有無で順位が変わることを検証
+
+### Step 2: GitData 型 + compute_boost_signals
+
+- [ ] `GitData` 型を定義: `Commit` (id, parents, author, timestamp, message), `DiffEntry` (status, path, old_path, additions, deletions), `CommitDiff`, `BlameBlock`, `FileBlame`, `Tag`
+- [ ] `DiffStatus` enum (`Added`, `Modified`, `Deleted`, `Renamed`, `Copied`)
+- [ ] `compute_boost_signals(git_data, now_timestamp) -> BoostSignals` を repoask-core に実装
+- [ ] 信号計算ロジック: 変更頻度 (log), 鮮度 (recency decay), 著者多様性, churn
+- [ ] **一貫性保証**: この関数が全プラットフォームで共通であることが必須。CLI/Web/Server で同一の Rust コード
+
+### Step 3 以降
+
+- [ ] repoask-repo に git subprocess → `GitData` アダプタ (Layer 4 CLI)
+- [ ] repoask-web (別 repo) に bit/API → `GitData` アダプタ (Layer 4 Web)
+- [ ] グラフノード設計: call graph / import graph / co-change graph のエッジ定義
+- [ ] centrality (PageRank 等) → `symbol_boosts` 変換
+
+## モジュール / インターフェース
+
+### Field 定数 (BM25 実装詳細) が types.rs に混在している
+
+- [ ] **`repoask-core/src/types.rs:116-120` — `FIELD_SYMBOL_NAME`, `FIELD_DOC_CONTENT`, `FIELD_PARAMS`, `FIELD_FILEPATH`, `NUM_FIELDS` が `Symbol`, `DocSection` 等のドメイン型と同じファイルに定義されている。** これらは転置インデックスのフィールド ID で、BM25 の実装詳細。`types.rs` を変更する理由が「ドメイン型の変更」と「インデックスフィールドの変更」の2つになっており、変更理由の分離 (SRP) に反する。`index.rs` か `bm25.rs` に移動すべき。同様に `Posting`, `FieldStats`, `DocId`, `FieldId` もインデックス実装のための型なので `index.rs` に移動が妥当
+
+### SearchResult::Example が IndexDocument に対応するバリアントを持たない
+
+- [ ] **`repoask-core/src/types.rs:26-28` — `IndexDocument` は `Code | Doc` の2バリアント。`repoask-core/src/types.rs:57-61` — `SearchResult` は `Code | Doc | Example` の3バリアント。** `Example` は `repoask-core/src/index.rs:274-277` の `is_example_path()` でファイルパスに `"example"`, `"sample"`, `"demo"` が含まれるかのヒューリスティックで決定される。ドメイン的な区別ではなく表示上の区別が core 型に混入している。対処法は2つ: (A) `IndexDocument` にも `Example(Symbol)` バリアントを追加してパーサー段階で区別する、(B) `SearchResult` から `Example` を除去して `CodeResult` に `is_example: bool` フィールドを追加する。(B) の方がシンプル — `ExampleResult` と `CodeResult` は `is_example` 以外のフィールドが完全に同一なので、別バリアントにする正当性がない
+
 ## 型設計
 
-- [ ] `IndexDocument` に `Example` バリアントを追加する検討 — 現在は `is_example_path()` でファイルパスから推測しているが、パーサー段階で `examples/` 配下かどうかを判定して型レベルで区別する方が堅実
 - [ ] `SearchResult` の `score()` / `filepath()` をトレイト化するか検討 — 各バリアントで同じフィールドを持つが、共通アクセスが match 必須
 
 ## パーサー
@@ -174,5 +245,5 @@
 
 ## 未実装の crate (Step 4 以降)
 
-- [ ] `repoask-wasm`: wasm-bindgen エントリポイント
+- [x] ~~`repoask-wasm`: wasm-bindgen エントリポイント~~ → `RepoIndex` (addFile/build/search/docCount) 実装済み、wasm-pack build 成功
 - [ ] `repoask-node`: napi-rs npm 配布
