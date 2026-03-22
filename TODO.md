@@ -59,9 +59,9 @@
 
 - [ ] `missing_docs` warnings を解消する (99件: struct field 37, variant 14, struct 9, module 8, function 7, method 6, const 5, enum 3, type alias 2, crate 2)
 - [ ] `unnecessary qualification` warnings を解消する (3件, `cargo fix` で自動修正可能)
-- [ ] clippy をインストールして pedantic/nursery/restriction lint を通す (`Cargo.toml` に設定済みだが未実行)
-- [ ] `expect_used` / `unwrap_used` が `deny` に設定された — `tree_sitter_parser.rs:13` の `expect()` を `ok_or()` + `?` に置き換える
-- [ ] テストコード内の `unwrap()` / `panic!()` に `#[cfg(test)]` 用の lint 除外を追加する
+- [x] ~~clippy をインストールして pedantic/nursery/restriction lint を通す~~ → `[workspace.lints]` + `clippy.toml` で設定、flake.nix に clippy 追加済み
+- [x] ~~`expect_used` / `unwrap_used` が `deny` に設定された — `tree_sitter_parser.rs:13` の `expect()` を `ok_or()` + `?` に置き換える~~ → repoask-treesitter 分離時に修正済み
+- [x] ~~テストコード内の `unwrap()` / `panic!()` に `#[cfg(test)]` 用の lint 除外を追加する~~ → 全テストモジュールに `#[allow(..., reason = "...")]` 追加済み
 
 ## 型設計
 
@@ -92,11 +92,11 @@
 
 - [x] ~~`InvertedIndex` の bincode ファイル保存/読み込みロジック~~ → `index_store.rs` で実装済み
 - [x] ~~`IndexMeta` (commit hash, format version, timestamp)~~ → `index_store.rs` で実装済み
-- [ ] `repo.rs` の `load_or_build_index()` 内で `unwrap_or(Path::new(""))` を使用 — `parent()` が `None` になるケースの適切なハンドリング
+- [x] ~~`repo.rs` の `load_or_build_index()` 内で `unwrap_or(Path::new(""))` を使用~~ → `if let Some(parent)` パターンに修正済み
 - [ ] `clone.rs` の atomic rename (`std::fs::rename`) はクロスファイルシステムで失敗する — `/tmp` とホームディレクトリが別パーティションのケース
 - [ ] `clone.rs` で clone 失敗時の tmp ディレクトリ cleanup が `let _ =` で無視されている
 - [ ] `repo.rs` のファイルロック解放が `let _ = lock_file.unlock()` で明示的にされているが、`Drop` で十分 — 冗長コード
-- [ ] CLI の `main.rs` で `eprintln!` を直接使っている — `print_stderr` lint が deny に設定されているため、`std::io::Write` 経由に統一すべき
+- [x] ~~CLI の `main.rs` で `eprintln!` を直接使っている~~ → `#![allow(clippy::print_stderr, reason = "CLI binary")]` で許可済み
 - [ ] CLI に `--dir` / `--ext` / `--type` フィルタオプションが未実装 (仕様 S2)
 - [ ] CLI に `extract` サブコマンドが未実装 (仕様 S1)
 - [ ] CLI に `overview` サブコマンドが未実装 (仕様 S6)
@@ -133,6 +133,44 @@
 
 - [ ] エラー時の振る舞い: exit code 1 + stderr にエラーメッセージ (1行で記載)
 - [ ] JSON lines: 各行が独立したJSONオブジェクト (Output format に1文追記)
+
+## ハーネス改善
+
+### CI / CD
+
+- [ ] **SHA pin の定期更新。** Dependabot or Renovate で `.github/workflows/*.yml` の action SHA を自動更新する PR を生成させる
+- [ ] **`missing_docs` を `warn` → `deny` に昇格。** 公開APIのドキュメントが揃ったら（目安: 0.5.0）切り替える
+- [ ] **coverage ratchet の実装。** `.metrics/coverage-baseline` ファイルを用意し、CI で coverage が下がったら fail するスクリプトを追加
+- [ ] **CodSpeed 連携。** divan ベンチマークを `codspeed-divan-compat` に切り替えて PR コメントで回帰検出を自動化
+- [ ] **cargo-mutants の全体実行。** weekly schedule で `cargo mutants --workspace` を走らせ、surviving mutants を定期検出
+
+### flake.nix / 開発環境
+
+- [ ] **direnv 連携。** `.envrc` に `use flake` を書いて `cd` 時に自動で devShell に入る
+- [ ] **flake.lock の定期更新。** `nix flake update` を月1で実行し、nixpkgs のパッケージバージョンを追従
+
+### テスト強化
+
+- [ ] **insta snapshot を repoask-parser にも追加。** oxc の extract 結果、markdown の parse 結果をスナップショット
+- [ ] **proptest: index serialize/deserialize roundtrip。** `deserialize(serialize(index)) == index` の不変条件
+- [ ] **proptest: BM25 score 非負。** 任意の入力で `SearchResult.score() >= 0.0`
+- [ ] **integration test: parse → index → search E2E。** `tests/fixtures/` にサンプルリポジトリを置いて、`parse_directory` → `InvertedIndex::build` → `search` の全フロー検証
+
+### エラーハンドリング
+
+- [ ] **repoask-core にもエラー型を追加する検討。** 現状はエラーパスがないが、`InvertedIndex::build` にバリデーション（空ドキュメント、不正な行番号）を入れるなら必要になる
+- [ ] **`ParseOutcome` → `ParseReport` の集約をCLIに露出。** `--verbose` フラグでスキップ/失敗ファイルの一覧を表示
+
+### ベンチマーク
+
+- [ ] **serialization ベンチの追加。** bincode encode/decode の速度を計測（仕様M4「インデックスキャッシュ読み込み0秒」の検証）
+- [ ] **大規模リポジトリでのE2Eベンチ。** 実際のOSSリポジトリ（e.g. vercel/next.js）でインデックス構築3秒以内、検索100ms以内を検証
+
+### リリース
+
+- [ ] **`release-plz.toml` の動作検証。** 初回リリース前にドライラン（`release-plz release --dry-run`）で CHANGELOG 生成を確認
+- [ ] **crates.io のパッケージ名予約。** `repoask`, `repoask-core`, `repoask-parser`, `repoask-treesitter`, `repoask-repo` を公開して名前を確保
+- [ ] **`panic = "abort"` の検討。** CLI バイナリのサイズ削減（~100KB）。`catch_unwind` を使っていないなら安全
 
 ## 未実装の crate (Step 4 以降)
 
