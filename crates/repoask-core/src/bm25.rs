@@ -1,4 +1,4 @@
-use crate::types::{FieldId, FieldStats, NUM_FIELDS};
+use crate::index::{FieldId, FieldStats, NUM_FIELDS};
 
 const K1: f32 = 1.2;
 const B: f32 = 0.75;

@@ -130,38 +130,3 @@ pub enum ParseOutcome {
         reason: String,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Internal index types
-// ---------------------------------------------------------------------------
-
-pub type DocId = u32;
-pub type FieldId = u8;
-
-pub const FIELD_SYMBOL_NAME: FieldId = 0;
-pub const FIELD_DOC_CONTENT: FieldId = 1;
-pub const FIELD_PARAMS: FieldId = 2;
-pub const FIELD_FILEPATH: FieldId = 3;
-pub const NUM_FIELDS: usize = 4;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Posting {
-    pub doc_id: DocId,
-    pub field_id: FieldId,
-    pub term_freq: u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FieldStats {
-    pub total_length: u64,
-    pub doc_count: u32,
-}
-
-impl FieldStats {
-    pub fn avg_length(&self) -> f32 {
-        if self.doc_count == 0 {
-            return 0.0;
-        }
-        self.total_length as f32 / self.doc_count as f32
-    }
-}
