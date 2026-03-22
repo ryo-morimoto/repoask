@@ -1,6 +1,6 @@
 # repoask
 
-Code understanding tool for any repository. Local-first, zero dependencies, fast.
+Code understanding tool for any repository. Local-first, no external services, fast.
 
 ```sh
 repoask search  vercel/next.js "middleware authentication"  # find code and docs
