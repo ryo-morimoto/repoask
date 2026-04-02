@@ -40,13 +40,13 @@ impl IndexMeta {
         Self {
             commit_hash,
             indexed_at: now,
-            repoask_version: env!("CARGO_PKG_VERSION").to_string(),
+            repoask_version: env!("CARGO_PKG_VERSION").to_owned(),
             index_format_version: INDEX_FORMAT_VERSION,
         }
     }
 
     /// Check if the index format is compatible with the current version.
-    pub fn is_compatible(&self) -> bool {
+    pub const fn is_compatible(&self) -> bool {
         self.index_format_version == INDEX_FORMAT_VERSION
     }
 
@@ -56,10 +56,9 @@ impl IndexMeta {
     }
 }
 
-/// Save an index to disk using bincode.
+/// Save an index to disk using postcard.
 pub fn save_index(index: &InvertedIndex, path: &Path) -> Result<(), SaveError> {
-    let config = bincode::config::standard();
-    let bytes = bincode::serde::encode_to_vec(index, config).map_err(SaveError::Encode)?;
+    let bytes = postcard::to_stdvec(index).map_err(SaveError::Encode)?;
     std::fs::write(path, &bytes)?;
     Ok(())
 }
@@ -73,9 +72,7 @@ pub fn load_index(path: &Path) -> Result<InvertedIndex, LoadError> {
         return Err(LoadError::TooLarge(file_size));
     }
     let bytes = std::fs::read(path)?;
-    let config = bincode::config::standard();
-    let (index, _) = bincode::serde::decode_from_slice::<InvertedIndex, _>(&bytes, config)
-        .map_err(LoadError::Decode)?;
+    let index = postcard::from_bytes::<InvertedIndex>(&bytes).map_err(LoadError::Decode)?;
     Ok(index)
 }
 
@@ -106,9 +103,9 @@ pub enum SaveError {
     /// IO error writing file.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Bincode encoding error.
+    /// Postcard encoding error.
     #[error("encode error: {0}")]
-    Encode(bincode::error::EncodeError),
+    Encode(postcard::Error),
     /// JSON serialization error.
     #[error("JSON error: {0}")]
     Json(serde_json::Error),
@@ -124,9 +121,9 @@ pub enum LoadError {
     /// File exceeds the maximum allowed size.
     #[error("file too large: {0} bytes")]
     TooLarge(u64),
-    /// Bincode decoding error.
+    /// Postcard decoding error.
     #[error("decode error: {0}")]
-    Decode(bincode::error::DecodeError),
+    Decode(postcard::Error),
     /// JSON deserialization error.
     #[error("JSON error: {0}")]
     Json(serde_json::Error),
@@ -137,30 +134,30 @@ pub enum LoadError {
 mod tests {
     use super::*;
     use repoask_core::index::InvertedIndex;
-    use repoask_core::types::{IndexDocument, Symbol, SymbolKind};
+    use repoask_core::types::{DocSection, IndexDocument, Symbol, SymbolKind};
 
     fn sample_index() -> InvertedIndex {
         let docs = vec![
             IndexDocument::Code(Symbol {
-                name: "validateToken".to_string(),
+                name: "validateToken".to_owned(),
                 kind: SymbolKind::Function,
-                filepath: "src/auth.rs".to_string(),
+                filepath: "src/auth.rs".to_owned(),
                 start_line: 1,
                 end_line: 20,
-                doc_comment: Some("Validates a JWT token".to_string()),
-                params: vec!["token".to_string()],
+                doc_comment: Some("Validates a JWT token".to_owned()),
+                params: vec!["token".to_owned()],
             }),
-            IndexDocument::Doc(repoask_core::types::DocSection {
-                filepath: "README.md".to_string(),
-                section_title: "Authentication".to_string(),
-                heading_hierarchy: vec!["Auth".to_string()],
-                content: "This section covers auth setup".to_string(),
-                code_symbols: vec!["validateToken".to_string()],
+            IndexDocument::Doc(DocSection {
+                filepath: "README.md".to_owned(),
+                section_title: "Authentication".to_owned(),
+                heading_hierarchy: vec!["Auth".to_owned()],
+                content: "This section covers auth setup".to_owned(),
+                code_symbols: vec!["validateToken".to_owned()],
                 start_line: 1,
                 end_line: 10,
             }),
         ];
-        InvertedIndex::build(docs)
+        InvertedIndex::build(&docs)
     }
 
     #[test]
@@ -189,7 +186,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("meta.json");
 
-        let original = IndexMeta::new("abc123def".to_string());
+        let original = IndexMeta::new("abc123def".to_owned());
         save_meta(&original, &path).unwrap();
         let loaded = load_meta(&path).unwrap();
 
@@ -216,7 +213,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("empty.bin");
 
-        let original = InvertedIndex::build(vec![]);
+        let docs: Vec<IndexDocument> = vec![];
+        let original = InvertedIndex::build(&docs);
         save_index(&original, &path).unwrap();
         let loaded = load_index(&path).unwrap();
 

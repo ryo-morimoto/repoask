@@ -1,3 +1,5 @@
+//! Index-build benchmarks for `repoask-core`.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "benchmark harness")]
 
 use divan::Bencher;
@@ -44,5 +46,5 @@ fn index_build(bencher: Bencher, n: usize) {
     let docs = generate_docs(n);
     bencher
         .with_inputs(|| docs.clone())
-        .bench_values(InvertedIndex::build);
+        .bench_values(|docs| InvertedIndex::build(&docs));
 }

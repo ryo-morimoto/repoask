@@ -95,12 +95,11 @@ fn load_or_build_index(
             if meta.is_compatible() {
                 // Check if the clone still matches
                 let clone_dir = cache::repo_clone_dir(owner, repo);
-                if clone_dir.exists() {
-                    if let Some(current_hash) = clone::head_commit(&clone_dir) {
-                        if meta.matches_commit(&current_hash) {
-                            return Ok(index_store::load_index(&index_path)?);
-                        }
-                    }
+                if clone_dir.exists()
+                    && let Some(current_hash) = clone::head_commit(&clone_dir)
+                    && meta.matches_commit(&current_hash)
+                {
+                    return Ok(index_store::load_index(&index_path)?);
                 }
             }
         }
@@ -110,7 +109,7 @@ fn load_or_build_index(
     let clone_dir = clone::ensure_clone(owner, repo, ref_spec)?;
 
     let (documents, _report) = crate::parse::parse_directory(&clone_dir);
-    let index = InvertedIndex::build(documents);
+    let index = InvertedIndex::build(&documents);
 
     // Save index and metadata
     if let Some(parent) = index_path.parent() {

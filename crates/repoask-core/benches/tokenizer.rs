@@ -1,3 +1,5 @@
+//! Tokenizer benchmarks for `repoask-core`.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "benchmark harness")]
 
 fn main() {

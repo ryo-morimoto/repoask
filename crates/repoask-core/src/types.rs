@@ -125,7 +125,7 @@ pub struct DocResult {
 
 impl SearchResult {
     /// Return the BM25 relevance score of this result.
-    pub fn score(&self) -> f32 {
+    pub const fn score(&self) -> f32 {
         match self {
             Self::Code(r) => r.score,
             Self::Doc(r) => r.score,

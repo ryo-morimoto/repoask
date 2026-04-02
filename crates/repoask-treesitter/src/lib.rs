@@ -48,24 +48,18 @@ pub enum ParseError {
 ///
 /// Returns a [`ParseOutcome`] distinguishing success, unsupported, and failure.
 pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
-    let ext = match filepath.rsplit('.').next() {
-        Some(e) => e,
-        None => {
-            return ParseOutcome::Unsupported {
-                filepath: filepath.to_owned(),
-                extension: None,
-            };
-        }
+    let Some(ext) = filepath.rsplit('.').next() else {
+        return ParseOutcome::Unsupported {
+            filepath: filepath.to_owned(),
+            extension: None,
+        };
     };
 
-    let (language, query) = match language_for_extension(ext) {
-        Some(lq) => lq,
-        None => {
-            return ParseOutcome::Unsupported {
-                filepath: filepath.to_owned(),
-                extension: Some(ext.to_owned()),
-            };
-        }
+    let Some((language, query)) = language_for_extension(ext) else {
+        return ParseOutcome::Unsupported {
+            filepath: filepath.to_owned(),
+            extension: Some(ext.to_owned()),
+        };
     };
 
     let symbols = parser::extract_symbols(source, filepath, &language, query);
@@ -107,7 +101,7 @@ fn language_for_extension(ext: &str) -> Option<(tree_sitter::Language, &'static 
 #[allow(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
-    use repoask_core::types::SymbolKind;
+    use repoask_core::types::{Symbol, SymbolKind};
 
     fn get_symbols(filepath: &str, source: &str) -> Vec<Symbol> {
         match parse_file(filepath, source) {

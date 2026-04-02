@@ -16,9 +16,7 @@ pub fn cache_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_CACHE_HOME") {
         return PathBuf::from(dir).join("repoask");
     }
-    dirs::cache_dir()
-        .map(|d| d.join("repoask"))
-        .unwrap_or_else(|| PathBuf::from("/tmp/repoask"))
+    dirs::cache_dir().map_or_else(|| PathBuf::from("/tmp/repoask"), |d| d.join("repoask"))
 }
 
 /// Returns the directory for a specific repository's data.

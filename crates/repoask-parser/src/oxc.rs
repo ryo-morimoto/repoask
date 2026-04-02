@@ -1,3 +1,8 @@
+#![allow(
+    clippy::wildcard_imports,
+    reason = "oxc AST traversal uses many generated node types"
+)]
+
 use std::collections::HashMap;
 
 use oxc_allocator::Allocator;
@@ -7,7 +12,7 @@ use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 use repoask_core::types::{Symbol, SymbolKind};
 
-/// Extract symbols from TypeScript/JavaScript source code using oxc_parser.
+/// Extract symbols from TypeScript/JavaScript source code using `oxc_parser`.
 pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(filepath).unwrap_or_default();
@@ -31,7 +36,7 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
 ///
 /// Uses oxc's `Comment.attached_to` field which gives the start offset of
 /// the token the comment is attached to. This replaces the previous
-/// O(file_size) reverse-scan per symbol with O(1) HashMap lookup.
+/// `O(file_size)` reverse-scan per symbol with O(1) `HashMap` lookup.
 fn build_comment_map(source: &str, comments: &[Comment]) -> HashMap<u32, String> {
     let mut map: HashMap<u32, Vec<&Comment>> = HashMap::new();
     for comment in comments {
@@ -102,7 +107,7 @@ impl<'a> ExtractCtx<'a> {
         self.symbols.push(Symbol {
             name,
             kind,
-            filepath: self.filepath.to_string(),
+            filepath: self.filepath.to_owned(),
             start_line: self.line_index.line_of(span.start),
             end_line: self.line_index.line_of(span.end),
             doc_comment: self.comments.get(&span.start).cloned(),
@@ -140,8 +145,7 @@ fn extract_from_export_default(
             let name = func
                 .id
                 .as_ref()
-                .map(|id| id.name.to_string())
-                .unwrap_or_else(|| "default".to_string());
+                .map_or_else(|| "default".to_owned(), |id| id.name.to_string());
             ctx.push(
                 name,
                 SymbolKind::Function,
@@ -153,8 +157,7 @@ fn extract_from_export_default(
             let name = class
                 .id
                 .as_ref()
-                .map(|id| id.name.to_string())
-                .unwrap_or_else(|| "default".to_string());
+                .map_or_else(|| "default".to_owned(), |id| id.name.to_string());
             ctx.push(name, SymbolKind::Class, class.span, vec![]);
         }
         _ => {}
@@ -176,7 +179,7 @@ fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>) {
         Declaration::ClassDeclaration(class) => {
             if let Some(id) = &class.id {
                 let class_name = id.name.to_string();
-                ctx.push(class_name.clone(), SymbolKind::Class, class.span, vec![]);
+                ctx.push(class_name, SymbolKind::Class, class.span, vec![]);
                 extract_class_methods(&class.body, ctx);
             }
         }
@@ -272,7 +275,7 @@ impl LineIndex {
         let mut line_starts = vec![0u32];
         for (i, byte) in source.bytes().enumerate() {
             if byte == b'\n' {
-                line_starts.push(i as u32 + 1);
+                line_starts.push(line_number_1based(i));
             }
         }
         Self { line_starts }
@@ -280,10 +283,18 @@ impl LineIndex {
 
     fn line_of(&self, offset: u32) -> u32 {
         match self.line_starts.binary_search(&offset) {
-            Ok(line) => line as u32 + 1,
-            Err(line) => line as u32,
+            Ok(line) => line_number_1based(line),
+            Err(line) => saturating_u32(line),
         }
     }
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn line_number_1based(value: usize) -> u32 {
+    saturating_u32(value).saturating_add(1)
 }
 
 #[cfg(test)]
@@ -312,12 +323,12 @@ mod tests {
 
     #[test]
     fn test_class_with_methods() {
-        let source = r#"
+        let source = r"
 class UserService {
     constructor(private db: Database) {}
     findById(id: string): User { return this.db.find(id); }
 }
-"#;
+";
         let symbols = extract_ts_symbols(source, "test.ts");
         assert!(
             symbols
@@ -373,10 +384,10 @@ class UserService {
 
     #[test]
     fn test_jsdoc_comment() {
-        let source = r#"
+        let source = r"
 /** Validates a JWT token and returns the payload. */
 function validateToken(token: string): Payload { }
-"#;
+";
         let symbols = extract_ts_symbols(source, "test.ts");
         assert_eq!(symbols.len(), 1);
         assert!(
@@ -402,7 +413,7 @@ function validateToken(token: string): Payload { }
 
     #[test]
     fn snapshot_mixed_typescript() {
-        let source = r#"
+        let source = r"
 /** User authentication service */
 export class AuthService {
     constructor(private db: Database) {}
@@ -421,7 +432,7 @@ export type AuthResult = { ok: true; user: User } | { ok: false; error: string }
 export const createAuth = (config: AuthConfig) => new AuthService(config);
 
 enum Role { Admin, User, Guest }
-"#;
+";
         let symbols = extract_ts_symbols(source, "src/auth.ts");
         insta::assert_json_snapshot!(symbols);
     }

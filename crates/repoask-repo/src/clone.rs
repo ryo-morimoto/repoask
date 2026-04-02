@@ -12,7 +12,7 @@ pub enum CloneError {
     /// Git command failed.
     #[error("git clone failed: {0}")]
     GitFailed(String),
-    /// Invalid repository specification (owner, repo, or ref_spec).
+    /// Invalid repository specification (owner, repo, or `ref_spec`).
     #[error("invalid repository spec: {0}")]
     InvalidSpec(String),
     /// IO error during directory operations.
@@ -109,10 +109,9 @@ fn clone_fresh(
         Ok(()) => {}
         Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
             // Cross-filesystem: fall back to recursive copy
-            copy_dir_recursive(&tmp_dir, target).map_err(|copy_err| {
+            copy_dir_recursive(&tmp_dir, target).inspect_err(|_copy_err| {
                 let _ = std::fs::remove_dir_all(&tmp_dir);
                 let _ = std::fs::remove_dir_all(target);
-                copy_err
             })?;
             let _ = std::fs::remove_dir_all(&tmp_dir);
         }
@@ -150,7 +149,7 @@ pub fn head_commit(repo_dir: &Path) -> Option<String> {
         .ok()?;
 
     if output.status.success() {
-        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     } else {
         None
     }

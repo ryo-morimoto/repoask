@@ -107,10 +107,11 @@ fn run_search(
 }
 
 fn print_json(results: &[SearchResult]) -> Result<(), serde_json::Error> {
+    use std::io::Write;
+
     for result in results {
         let json = serde_json::to_string(result)?;
         // Use write! to stdout to avoid print_stdout lint
-        use std::io::Write;
         let mut stdout = std::io::stdout().lock();
         let _ = writeln!(stdout, "{json}");
     }
@@ -119,6 +120,7 @@ fn print_json(results: &[SearchResult]) -> Result<(), serde_json::Error> {
 
 fn print_text(results: &[SearchResult]) {
     use std::io::Write;
+
     let mut stdout = std::io::stdout().lock();
 
     for result in results {
@@ -152,23 +154,21 @@ fn print_text(results: &[SearchResult]) {
 
 fn run_cleanup(repo_spec: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
+
     let mut stderr = std::io::stderr().lock();
 
-    match repo_spec {
-        Some(spec) => {
-            let (owner, repo, _) = repo::parse_repo_spec(spec).ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("invalid repo spec: {spec}"),
-                )
-            })?;
-            cache::cleanup_repo(owner, repo)?;
-            let _ = writeln!(stderr, "cleaned up cache for {owner}/{repo}");
-        }
-        None => {
-            cache::cleanup_all()?;
-            let _ = writeln!(stderr, "cleaned up all cached data");
-        }
+    if let Some(spec) = repo_spec {
+        let (owner, repo, _) = repo::parse_repo_spec(spec).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid repo spec: {spec}"),
+            )
+        })?;
+        cache::cleanup_repo(owner, repo)?;
+        let _ = writeln!(stderr, "cleaned up cache for {owner}/{repo}");
+    } else {
+        cache::cleanup_all()?;
+        let _ = writeln!(stderr, "cleaned up all cached data");
     }
     Ok(())
 }

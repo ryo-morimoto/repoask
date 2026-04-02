@@ -40,7 +40,7 @@ enum FileResult {
 /// Returns both the documents and a report of what was skipped/failed.
 pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
     let (tx, rx) = crossbeam_channel::unbounded::<FileResult>();
-    let root_owned = root.to_path_buf();
+    let root_dir = root.to_path_buf();
 
     let walker = WalkBuilder::new(root)
         .hidden(true)
@@ -50,11 +50,10 @@ pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
 
     walker.run(|| {
         let tx = tx.clone();
-        let root = root_owned.clone();
+        let base_dir = root_dir.clone();
         Box::new(move |entry| {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => return ignore::WalkState::Continue,
+            let Ok(entry) = entry else {
+                return ignore::WalkState::Continue;
             };
             if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                 return ignore::WalkState::Continue;
@@ -62,8 +61,8 @@ pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
 
             let path = entry.path();
             let relative_path = path
-                .strip_prefix(&root)
-                .unwrap_or_else(|_| path)
+                .strip_prefix(&base_dir)
+                .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
 
@@ -75,9 +74,8 @@ pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
                 }
             }
 
-            let source = match std::fs::read_to_string(path) {
-                Ok(s) => s,
-                Err(_) => return ignore::WalkState::Continue,
+            let Ok(source) = std::fs::read_to_string(path) else {
+                return ignore::WalkState::Continue;
             };
 
             // Try repoask-parser first (oxc + markdown)

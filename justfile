@@ -16,6 +16,10 @@ snapshot:
 coverage:
     cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
 
+coverage-ratchet:
+    cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+    scripts/check-coverage-ratchet.sh lcov.info .metrics/coverage-baseline
+
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 

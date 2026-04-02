@@ -14,7 +14,7 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
     let mut code_block_content = String::new();
 
     for (line_num, line) in source.lines().enumerate() {
-        let line_1based = line_num as u32 + 1;
+        let line_1based = line_number_1based(line_num);
 
         // Track fenced code block boundaries
         if line.trim_start().starts_with("```") {
@@ -46,10 +46,10 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
             if !current_title.is_empty() || !current_content.trim().is_empty() {
                 let hierarchy = heading_stack.iter().map(|(_, t)| t.clone()).collect();
                 sections.push(DocSection {
-                    filepath: filepath.to_string(),
+                    filepath: filepath.to_owned(),
                     section_title: current_title.clone(),
                     heading_hierarchy: hierarchy,
-                    content: current_content.trim().to_string(),
+                    content: current_content.trim().to_owned(),
                     code_symbols: current_code_symbols.clone(),
                     start_line: section_start_line,
                     end_line: line_1based.saturating_sub(1),
@@ -75,18 +75,18 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
     }
 
     // Flush last section
-    let total_lines = source.lines().count() as u32;
+    let total_lines = saturating_u32(source.lines().count());
     if !current_title.is_empty() || !current_content.trim().is_empty() {
         let hierarchy = heading_stack.iter().map(|(_, t)| t.clone()).collect();
         sections.push(DocSection {
-            filepath: filepath.to_string(),
+            filepath: filepath.to_owned(),
             section_title: if current_title.is_empty() {
-                "Introduction".to_string()
+                "Introduction".to_owned()
             } else {
                 current_title
             },
             heading_hierarchy: hierarchy,
-            content: current_content.trim().to_string(),
+            content: current_content.trim().to_owned(),
             code_symbols: current_code_symbols,
             start_line: section_start_line,
             end_line: total_lines,
@@ -96,10 +96,10 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
     // Handle files with no headings at all
     if sections.is_empty() && !source.trim().is_empty() {
         sections.push(DocSection {
-            filepath: filepath.to_string(),
-            section_title: "Introduction".to_string(),
+            filepath: filepath.to_owned(),
+            section_title: "Introduction".to_owned(),
             heading_hierarchy: vec![],
-            content: source.trim().to_string(),
+            content: source.trim().to_owned(),
             code_symbols: extract_code_block_identifiers(source),
             start_line: 1,
             end_line: total_lines,
@@ -112,12 +112,13 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
 fn parse_heading(line: &str) -> Option<(u8, String)> {
     let trimmed = line.trim_start();
     let hashes = trimmed.bytes().take_while(|&b| b == b'#').count();
-    if hashes >= 1 && hashes <= 6 {
+    if (1..=6).contains(&hashes) {
         let rest = &trimmed[hashes..];
         if rest.starts_with(' ') {
-            let title = rest.trim().to_string();
+            let title = rest.trim().to_owned();
             if !title.is_empty() {
-                return Some((hashes as u8, title));
+                let depth = u8::try_from(hashes).ok()?;
+                return Some((depth, title));
             }
         }
     }
@@ -138,13 +139,21 @@ fn extract_code_block_identifiers(code: &str) -> Vec<String> {
                 .is_some_and(|c| c.is_alphabetic() || c == '_')
             && trimmed.chars().all(|c| c.is_alphanumeric() || c == '_')
         {
-            identifiers.push(trimmed.to_string());
+            identifiers.push(trimmed.to_owned());
         }
     }
 
     identifiers.sort();
     identifiers.dedup();
     identifiers
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn line_number_1based(value: usize) -> u32 {
+    saturating_u32(value).saturating_add(1)
 }
 
 #[cfg(test)]
@@ -190,12 +199,8 @@ mod tests {
     fn test_code_symbols_extracted() {
         let md = "# Auth\n\n```typescript\nconst token = validateJWT(secret);\n```\n";
         let sections = parse_markdown(md, "doc.md");
-        assert!(
-            sections[0]
-                .code_symbols
-                .contains(&"validateJWT".to_string())
-        );
-        assert!(sections[0].code_symbols.contains(&"token".to_string()));
+        assert!(sections[0].code_symbols.contains(&"validateJWT".to_owned()));
+        assert!(sections[0].code_symbols.contains(&"token".to_owned()));
     }
 
     #[test]

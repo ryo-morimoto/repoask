@@ -36,14 +36,11 @@ pub enum ParseError {
 /// Returns a [`ParseOutcome`] that distinguishes between success,
 /// unsupported file types, and parse failures.
 pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
-    let ext = match filepath.rsplit('.').next() {
-        Some(e) => e,
-        None => {
-            return ParseOutcome::Unsupported {
-                filepath: filepath.to_owned(),
-                extension: None,
-            };
-        }
+    let Some(ext) = filepath.rsplit('.').next() else {
+        return ParseOutcome::Unsupported {
+            filepath: filepath.to_owned(),
+            extension: None,
+        };
     };
 
     match ext {

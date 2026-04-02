@@ -8,8 +8,8 @@ thread_local! {
 
 /// Split a code identifier into lowercase tokens.
 ///
-/// Handles camelCase, PascalCase, snake_case, kebab-case, and
-/// consecutive uppercase runs (e.g. "parseJSON" → ["parse", "json"]).
+/// Handles `camelCase`, `PascalCase`, `snake_case`, `kebab-case`, and
+/// consecutive uppercase runs (e.g. `parseJSON` -> `["parse", "json"]`).
 pub fn split_identifier(name: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
@@ -32,11 +32,9 @@ pub fn split_identifier(name: &str) -> Vec<String> {
             let curr_upper_run = i > 0 && chars[i - 1].is_uppercase();
 
             // Split before: aB, or end of uppercase run ABc
-            if prev_lower || (curr_upper_run && next_lower) {
-                if !current.is_empty() {
-                    tokens.push(current.to_lowercase());
-                    current.clear();
-                }
+            if (prev_lower || (curr_upper_run && next_lower)) && !current.is_empty() {
+                tokens.push(current.to_lowercase());
+                current.clear();
             }
         }
 
@@ -66,7 +64,7 @@ pub fn tokenize_text(text: &str) -> Vec<String> {
     let words = text
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|w| w.len() < 80)
-        .map(|w| w.to_lowercase());
+        .map(str::to_lowercase);
     stem_tokens(words)
 }
 
@@ -143,9 +141,9 @@ mod tests {
     fn test_tokenize_identifier_stems() {
         let tokens = tokenize_identifier("validateJWTToken");
         // "validate" stems to "valid", "jwt" stays, "token" stays
-        assert!(tokens.contains(&"valid".to_string()));
-        assert!(tokens.contains(&"jwt".to_string()));
-        assert!(tokens.contains(&"token".to_string()));
+        assert!(tokens.contains(&"valid".to_owned()));
+        assert!(tokens.contains(&"jwt".to_owned()));
+        assert!(tokens.contains(&"token".to_owned()));
     }
 
     #[test]
@@ -171,25 +169,31 @@ mod tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// Generate random camelCase / snake_case identifiers.
+        /// Generate random camelCase / `snake_case` identifiers.
         fn identifier_strategy() -> impl Strategy<Value = String> {
             prop::collection::vec("[a-z]{2,8}", 1..5).prop_map(|parts| {
                 let mut result = parts[0].clone();
                 for part in &parts[1..] {
-                    // Randomly mix camelCase and snake_case
-                    if result.len() % 2 == 0 {
-                        let mut chars = part.chars();
-                        if let Some(first) = chars.next() {
-                            result.push(first.to_ascii_uppercase());
-                            result.extend(chars);
-                        }
-                    } else {
-                        result.push('_');
-                        result.push_str(part);
-                    }
+                    append_identifier_part(&mut result, part);
                 }
                 result
             })
+        }
+
+        fn append_identifier_part(result: &mut String, part: &str) {
+            // Randomly mix camelCase and snake_case
+            if result.len() % 2 != 0 {
+                result.push('_');
+                result.push_str(part);
+                return;
+            }
+
+            let mut chars = part.chars();
+            let Some(first) = chars.next() else {
+                return;
+            };
+            result.push(first.to_ascii_uppercase());
+            result.extend(chars);
         }
 
         proptest! {

@@ -1,6 +1,11 @@
 //! Tree-sitter query strings for each supported language.
 
-pub(crate) const RUST: &str = r#"
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "crate-private query constants are consumed from the root module"
+)]
+
+pub(crate) const RUST: &str = r"
 (function_item
   name: (identifier) @name
   parameters: (parameters) @params) @definition.function
@@ -25,18 +30,18 @@ pub(crate) const RUST: &str = r#"
     (function_item
       name: (identifier) @name
       parameters: (parameters) @params) @definition.method))
-"#;
+";
 
-pub(crate) const PYTHON: &str = r#"
+pub(crate) const PYTHON: &str = r"
 (function_definition
   name: (identifier) @name
   parameters: (parameters) @params) @definition.function
 
 (class_definition
   name: (identifier) @name) @definition.class
-"#;
+";
 
-pub(crate) const GO: &str = r#"
+pub(crate) const GO: &str = r"
 (function_declaration
   name: (identifier) @name
   parameters: (parameter_list) @params) @definition.function
@@ -48,9 +53,9 @@ pub(crate) const GO: &str = r#"
 (type_declaration
   (type_spec
     name: (type_identifier) @name) @definition.type)
-"#;
+";
 
-pub(crate) const JAVA: &str = r#"
+pub(crate) const JAVA: &str = r"
 (method_declaration
   name: (identifier) @name
   parameters: (formal_parameters) @params) @definition.method
@@ -63,9 +68,9 @@ pub(crate) const JAVA: &str = r#"
 
 (enum_declaration
   name: (identifier) @name) @definition.enum
-"#;
+";
 
-pub(crate) const C: &str = r#"
+pub(crate) const C: &str = r"
 (function_definition
   declarator: (function_declarator
     declarator: (identifier) @name
@@ -76,9 +81,9 @@ pub(crate) const C: &str = r#"
 
 (enum_specifier
   name: (type_identifier) @name) @definition.enum
-"#;
+";
 
-pub(crate) const CPP: &str = r#"
+pub(crate) const CPP: &str = r"
 (function_definition
   declarator: (function_declarator
     declarator: (identifier) @name
@@ -92,9 +97,9 @@ pub(crate) const CPP: &str = r#"
 
 (enum_specifier
   name: (type_identifier) @name) @definition.enum
-"#;
+";
 
-pub(crate) const RUBY: &str = r#"
+pub(crate) const RUBY: &str = r"
 (method
   name: (identifier) @name
   parameters: (method_parameters) @params) @definition.method
@@ -104,4 +109,4 @@ pub(crate) const RUBY: &str = r#"
 
 (module
   name: (constant) @name) @definition.class
-"#;
+";

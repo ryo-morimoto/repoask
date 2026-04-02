@@ -1,3 +1,5 @@
+//! Search benchmarks for `repoask-core`.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "benchmark harness")]
 
 use divan::Bencher;
@@ -22,7 +24,7 @@ fn build_index(n: usize) -> InvertedIndex {
             })
         })
         .collect();
-    InvertedIndex::build(docs)
+    InvertedIndex::build(&docs)
 }
 
 const QUERIES: &[&str] = &[

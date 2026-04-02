@@ -1,5 +1,10 @@
 //! Core tree-sitter symbol extraction logic.
 
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "crate-private parser helpers are consumed from the root module"
+)]
+
 use std::cell::RefCell;
 
 use repoask_core::types::{Symbol, SymbolKind};
@@ -24,14 +29,10 @@ pub(crate) fn extract_symbols(
         parser.parse(source, None)
     });
 
-    let tree = match tree {
-        Some(t) => t,
-        None => return vec![],
-    };
+    let Some(tree) = tree else { return vec![] };
 
-    let query = match Query::new(language, query_source) {
-        Ok(q) => q,
-        Err(_) => return vec![],
+    let Ok(query) = Query::new(language, query_source) else {
+        return vec![];
     };
 
     let mut cursor = QueryCursor::new();
@@ -54,13 +55,12 @@ pub(crate) fn extract_symbols(
             let text = &source[node.byte_range()];
 
             match capture_name {
-                "name" => name = text.to_string(),
+                "name" => text.clone_into(&mut name),
                 "params" => {
                     params = extract_param_names(node, source);
                 }
                 _ if capture_name.starts_with("definition.") => {
                     kind = match capture_name {
-                        "definition.function" => SymbolKind::Function,
                         "definition.method" => SymbolKind::Method,
                         "definition.class" => SymbolKind::Class,
                         "definition.struct" => SymbolKind::Struct,
@@ -71,8 +71,8 @@ pub(crate) fn extract_symbols(
                         "definition.const" => SymbolKind::Const,
                         _ => SymbolKind::Function,
                     };
-                    start_line = node.start_position().row as u32 + 1;
-                    end_line = node.end_position().row as u32 + 1;
+                    start_line = line_number_1based(node.start_position().row);
+                    end_line = line_number_1based(node.end_position().row);
                     def_node = Some(node);
                 }
                 _ => {}
@@ -84,7 +84,7 @@ pub(crate) fn extract_symbols(
             symbols.push(Symbol {
                 name,
                 kind,
-                filepath: filepath.to_string(),
+                filepath: filepath.to_owned(),
                 start_line,
                 end_line,
                 doc_comment,
@@ -113,14 +113,14 @@ fn find_param_name(node: Node, source: &str) -> Option<String> {
     let kind = node.kind();
 
     if kind == "identifier" || kind == "name" || kind == "shorthand_field_identifier" {
-        return Some(source[node.byte_range()].to_string());
+        return Some(source[node.byte_range()].to_owned());
     }
 
     if kind.contains("parameter") || kind == "typed_parameter" || kind == "pair" {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "identifier" || child.kind() == "name" {
-                return Some(source[child.byte_range()].to_string());
+                return Some(source[child.byte_range()].to_owned());
             }
         }
     }
@@ -135,7 +135,7 @@ fn extract_doc_comment(node: Node, source: &str) -> Option<String> {
     while let Some(prev) = current.prev_sibling() {
         let kind = prev.kind();
         if kind == "comment" || kind == "line_comment" || kind == "block_comment" {
-            let text = source[prev.byte_range()].trim().to_string();
+            let text = source[prev.byte_range()].trim().to_owned();
             comment_lines.push(text);
             current = prev;
         } else {
@@ -168,4 +168,12 @@ fn extract_doc_comment(node: Node, source: &str) -> Option<String> {
     } else {
         Some(joined)
     }
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn line_number_1based(value: usize) -> u32 {
+    saturating_u32(value).saturating_add(1)
 }

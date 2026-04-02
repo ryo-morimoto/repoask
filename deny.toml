@@ -9,9 +9,8 @@ targets = [
 all-features = true
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "deny"
+unmaintained = "workspace"
+unsound = "all"
 yanked = "deny"
 ignore = []
 
@@ -30,11 +29,6 @@ allow = [
     "0BSD",
     "CC0-1.0",
     "MPL-2.0",
-]
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
 ]
 exceptions = []
 

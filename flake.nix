@@ -32,6 +32,7 @@
             pkg-config
             libiconv # macOS compat
             lld # WASM linker for cdylib targets
+            llvmPackages_21.llvm # llvm-cov / llvm-profdata for coverage
 
             # === Git (for repoask-repo clone operations) ===
             git
@@ -40,8 +41,10 @@
             cargo-nextest  # test runner
             cargo-deny     # dependency audit
             cargo-insta    # snapshot testing
+            cargo-llvm-cov # coverage reporting
             cargo-machete  # unused dependency detection
             cargo-modules  # module structure visualization
+            gitleaks       # secret scanning
             just           # task runner
             prek           # git hooks
             typos          # spell checker
@@ -52,6 +55,8 @@
 
           # Rust source for IDE support
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+          LLVM_COV = "${pkgs.llvmPackages_21.llvm}/bin/llvm-cov";
+          LLVM_PROFDATA = "${pkgs.llvmPackages_21.llvm}/bin/llvm-profdata";
 
           shellHook = ''
             # Install git hooks on shell entry if not already installed

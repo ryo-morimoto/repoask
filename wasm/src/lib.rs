@@ -28,6 +28,10 @@ pub struct RepoIndex {
 impl RepoIndex {
     /// Create a new empty index.
     #[wasm_bindgen(constructor)]
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "`wasm_bindgen` constructors cannot be `const fn`"
+    )]
     pub fn new() -> Self {
         Self {
             documents: Vec::new(),
@@ -50,7 +54,7 @@ impl RepoIndex {
     /// Must be called after all `addFile()` calls and before `search()`.
     pub fn build(&mut self) {
         let docs = std::mem::take(&mut self.documents);
-        self.index = Some(InvertedIndex::build(docs));
+        self.index = Some(InvertedIndex::build(&docs));
     }
 
     /// Search the index and return results as a JSON string.
@@ -70,10 +74,9 @@ impl RepoIndex {
     /// Return the number of documents in the index.
     #[wasm_bindgen(js_name = "docCount")]
     pub fn doc_count(&self) -> usize {
-        match &self.index {
-            Some(idx) => idx.doc_count(),
-            None => self.documents.len(),
-        }
+        self.index
+            .as_ref()
+            .map_or(self.documents.len(), InvertedIndex::doc_count)
     }
 }
 

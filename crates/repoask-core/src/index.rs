@@ -49,6 +49,10 @@ pub struct FieldStats {
 
 impl FieldStats {
     /// Return the average field length, or 0.0 if no documents exist.
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "BM25 uses f32 scores and field lengths are already bounded per document"
+    )]
     pub fn avg_length(&self) -> f32 {
         if self.doc_count == 0 {
             return 0.0;
@@ -86,7 +90,7 @@ enum StoredDoc {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvertedIndex {
     postings: HashMap<String, Vec<Posting>>,
-    /// Pre-computed document frequency per term (unique doc_id count).
+    /// Pre-computed document frequency per term (unique `doc_id` count).
     doc_freqs: HashMap<String, u32>,
     documents: Vec<StoredDoc>,
     field_lengths: Vec<[u16; NUM_FIELDS]>,
@@ -94,7 +98,7 @@ pub struct InvertedIndex {
 }
 
 /// Helper for min-heap top-k selection. Ordered by score ascending (min first),
-/// with ties broken by doc_id descending so the heap evicts the least desirable.
+/// with ties broken by `doc_id` descending so the heap evicts the least desirable.
 #[derive(PartialEq)]
 struct ScoredDoc {
     doc_id: DocId,
@@ -120,7 +124,7 @@ impl Ord for ScoredDoc {
 
 impl InvertedIndex {
     /// Build an index from a collection of parsed documents.
-    pub fn build(docs: Vec<IndexDocument>) -> Self {
+    pub fn build(docs: &[IndexDocument]) -> Self {
         let mut index = Self {
             postings: HashMap::new(),
             doc_freqs: HashMap::new(),
@@ -143,31 +147,31 @@ impl InvertedIndex {
             for p in postings {
                 seen.insert(p.doc_id);
             }
-            index.doc_freqs.insert(term.clone(), seen.len() as u32);
+            index
+                .doc_freqs
+                .insert(term.clone(), saturating_u32(seen.len()));
         }
 
         index
     }
 
-    fn add_document(&mut self, doc: IndexDocument, term_freq_buf: &mut HashMap<String, u16>) {
-        let doc_id = self.documents.len() as DocId;
+    fn add_document(&mut self, doc: &IndexDocument, term_freq_buf: &mut HashMap<String, u16>) {
+        let doc_id = saturating_doc_id(self.documents.len());
         let mut lengths = [0u16; NUM_FIELDS];
 
-        match &doc {
+        match doc {
             IndexDocument::Code(symbol) => {
                 let is_example = is_example_path(&symbol.filepath);
 
                 // Field 0: symbol name tokens
                 let name_tokens = tokenize_identifier(&symbol.name);
-                lengths[FIELD_SYMBOL_NAME as usize] =
-                    name_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_SYMBOL_NAME)] = saturating_u16(name_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &name_tokens, term_freq_buf);
 
                 // Field 1: doc comment tokens
                 if let Some(ref comment) = symbol.doc_comment {
                     let comment_tokens = tokenize_text(comment);
-                    lengths[FIELD_DOC_CONTENT as usize] =
-                        comment_tokens.len().min(u16::MAX as usize) as u16;
+                    lengths[usize::from(FIELD_DOC_CONTENT)] = saturating_u16(comment_tokens.len());
                     self.add_field_tokens(
                         doc_id,
                         FIELD_DOC_CONTENT,
@@ -182,12 +186,12 @@ impl InvertedIndex {
                     .iter()
                     .flat_map(|p| tokenize_identifier(p))
                     .collect();
-                lengths[FIELD_PARAMS as usize] = param_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_PARAMS)] = saturating_u16(param_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_PARAMS, &param_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&symbol.filepath);
-                lengths[FIELD_FILEPATH as usize] = path_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_FILEPATH)] = saturating_u16(path_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 self.documents.push(StoredDoc::Code {
@@ -205,14 +209,12 @@ impl InvertedIndex {
                 for ancestor in &section.heading_hierarchy {
                     heading_tokens.extend(tokenize_text(ancestor));
                 }
-                lengths[FIELD_SYMBOL_NAME as usize] =
-                    heading_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_SYMBOL_NAME)] = saturating_u16(heading_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &heading_tokens, term_freq_buf);
 
                 // Field 1: body content tokens
                 let body_tokens = tokenize_text(&section.content);
-                lengths[FIELD_DOC_CONTENT as usize] =
-                    body_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_DOC_CONTENT)] = saturating_u16(body_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_DOC_CONTENT, &body_tokens, term_freq_buf);
 
                 // Field 2: code symbols extracted from fenced blocks
@@ -221,13 +223,12 @@ impl InvertedIndex {
                     .iter()
                     .flat_map(|s| tokenize_identifier(s))
                     .collect();
-                lengths[FIELD_PARAMS as usize] =
-                    code_sym_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_PARAMS)] = saturating_u16(code_sym_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_PARAMS, &code_sym_tokens, term_freq_buf);
 
                 // Field 3: filepath tokens
                 let path_tokens = tokenize_identifier(&section.filepath);
-                lengths[FIELD_FILEPATH as usize] = path_tokens.len().min(u16::MAX as usize) as u16;
+                lengths[usize::from(FIELD_FILEPATH)] = saturating_u16(path_tokens.len());
                 self.add_field_tokens(doc_id, FIELD_FILEPATH, &path_tokens, term_freq_buf);
 
                 let preview = section.content.chars().take(200).collect::<String>();
@@ -242,7 +243,7 @@ impl InvertedIndex {
 
         // Update field stats
         for (i, &len) in lengths.iter().enumerate() {
-            self.field_stats[i].total_length += len as u64;
+            self.field_stats[i].total_length += u64::from(len);
             if len > 0 {
                 self.field_stats[i].doc_count += 1;
             }
@@ -280,7 +281,7 @@ impl InvertedIndex {
         }
 
         let scorer = Bm25Scorer::new();
-        let total_docs = self.documents.len() as u32;
+        let total_docs = saturating_u32(self.documents.len());
         let mut doc_scores: HashMap<DocId, f32> = HashMap::new();
 
         for token in &query_tokens {
@@ -291,16 +292,17 @@ impl InvertedIndex {
             let doc_freq = self.doc_freqs.get(token.as_str()).copied().unwrap_or(0);
 
             for posting in postings {
-                let field_length =
-                    self.field_lengths[posting.doc_id as usize][posting.field_id as usize];
-                let score = scorer.score(
-                    posting.term_freq,
+                let doc_index = usize::try_from(posting.doc_id).unwrap_or_default();
+                let field_index = usize::from(posting.field_id);
+                let field_length = self.field_lengths[doc_index][field_index];
+                let score = scorer.score(crate::bm25::ScoreInput {
+                    term_freq: posting.term_freq,
                     field_length,
-                    posting.field_id,
-                    &self.field_stats[posting.field_id as usize],
+                    field_id: posting.field_id,
+                    field_stats: &self.field_stats[field_index],
                     doc_freq,
                     total_docs,
-                );
+                });
                 *doc_scores.entry(posting.doc_id).or_insert(0.0) += score;
             }
         }
@@ -329,7 +331,8 @@ impl InvertedIndex {
     }
 
     fn to_search_result(&self, doc_id: DocId, score: f32) -> SearchResult {
-        match &self.documents[doc_id as usize] {
+        let doc_index = usize::try_from(doc_id).unwrap_or_default();
+        match &self.documents[doc_index] {
             StoredDoc::Code {
                 filepath,
                 name,
@@ -370,6 +373,18 @@ fn is_example_path(filepath: &str) -> bool {
     lower.contains("example") || lower.contains("sample") || lower.contains("demo")
 }
 
+fn saturating_doc_id(value: usize) -> DocId {
+    DocId::try_from(value).unwrap_or(DocId::MAX)
+}
+
+fn saturating_u16(value: usize) -> u16 {
+    u16::try_from(value).unwrap_or(u16::MAX)
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -383,9 +398,9 @@ mod tests {
 
     fn make_symbol(name: &str, filepath: &str) -> IndexDocument {
         IndexDocument::Code(Symbol {
-            name: name.to_string(),
+            name: name.to_owned(),
             kind: SymbolKind::Function,
-            filepath: filepath.to_string(),
+            filepath: filepath.to_owned(),
             start_line: 1,
             end_line: 10,
             doc_comment: None,
@@ -395,10 +410,10 @@ mod tests {
 
     fn make_doc(title: &str, content: &str, filepath: &str) -> IndexDocument {
         IndexDocument::Doc(DocSection {
-            filepath: filepath.to_string(),
-            section_title: title.to_string(),
+            filepath: filepath.to_owned(),
+            section_title: title.to_owned(),
             heading_hierarchy: vec![],
-            content: content.to_string(),
+            content: content.to_owned(),
             code_symbols: vec![],
             start_line: 1,
             end_line: 20,
@@ -407,24 +422,27 @@ mod tests {
 
     #[test]
     fn test_empty_index() {
-        let index = InvertedIndex::build(vec![]);
+        let docs: Vec<IndexDocument> = vec![];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("anything", 10);
         assert!(results.is_empty());
     }
 
     #[test]
     fn test_empty_query() {
-        let index = InvertedIndex::build(vec![make_symbol("foo", "src/foo.rs")]);
+        let docs = vec![make_symbol("foo", "src/foo.rs")];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("", 10);
         assert!(results.is_empty());
     }
 
     #[test]
     fn test_symbol_name_match() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_symbol("validateToken", "src/auth.rs"),
             make_symbol("parseJSON", "src/json.rs"),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("validate token", 10);
         assert!(!results.is_empty());
         assert_eq!(results[0].filepath(), "src/auth.rs");
@@ -432,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_doc_section_match() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_doc(
                 "Authentication",
                 "This section explains how to authenticate with JWT tokens",
@@ -443,21 +461,23 @@ mod tests {
                 "Run npm install to get started",
                 "docs/install.md",
             ),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("authentication jwt", 10);
         assert!(!results.is_empty());
         match &results[0] {
             SearchResult::Doc(r) => assert_eq!(r.section, "Authentication"),
-            _ => panic!("Expected Doc result"),
+            SearchResult::Code(_) => panic!("Expected Doc result"),
         }
     }
 
     #[test]
     fn test_symbol_name_ranked_higher_than_filepath() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_symbol("createUser", "src/auth/validate.rs"),
             make_symbol("validateToken", "src/token.rs"),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("validate", 10);
         // validateToken (name match) should rank above createUser (path match)
         assert_eq!(results[0].filepath(), "src/token.rs");
@@ -465,7 +485,8 @@ mod tests {
 
     #[test]
     fn test_example_detection() {
-        let index = InvertedIndex::build(vec![make_symbol("handler", "examples/auth/login.ts")]);
+        let docs = vec![make_symbol("handler", "examples/auth/login.ts")];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("handler", 10);
         assert!(matches!(
             results[0],
@@ -478,14 +499,15 @@ mod tests {
 
     #[test]
     fn test_mixed_code_and_doc() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_symbol("authenticate", "src/auth.rs"),
             make_doc(
                 "Authentication Guide",
                 "Learn how to authenticate users",
                 "docs/auth.md",
             ),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("authenticate", 10);
         assert_eq!(results.len(), 2);
     }
@@ -495,7 +517,7 @@ mod tests {
         let docs: Vec<IndexDocument> = (0..100)
             .map(|i| make_symbol(&format!("validateItem{i}"), &format!("src/f{i}.rs")))
             .collect();
-        let index = InvertedIndex::build(docs);
+        let index = InvertedIndex::build(&docs);
         let results = index.search("validate", 5);
         assert_eq!(results.len(), 5);
     }
@@ -506,7 +528,7 @@ mod tests {
 
     #[test]
     fn snapshot_mixed_search_results() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_symbol("validateToken", "src/auth.rs"),
             make_symbol("handler", "examples/auth/login.ts"),
             make_doc(
@@ -514,18 +536,20 @@ mod tests {
                 "JWT token validation guide",
                 "docs/auth.md",
             ),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("validate token authentication", 10);
         insta::assert_json_snapshot!(results);
     }
 
     #[test]
     fn snapshot_code_only_results() {
-        let index = InvertedIndex::build(vec![
+        let docs = vec![
             make_symbol("parseJSON", "src/json.rs"),
             make_symbol("parseXML", "src/xml.rs"),
             make_symbol("parseCSV", "src/csv.rs"),
-        ]);
+        ];
+        let index = InvertedIndex::build(&docs);
         let results = index.search("parse", 10);
         insta::assert_json_snapshot!(results);
     }
@@ -566,7 +590,7 @@ mod tests {
                 docs in arb_docs(),
                 query in "[a-z]{2,8}( [a-z]{2,8}){0,3}",
             ) {
-                let index = InvertedIndex::build(docs);
+                let index = InvertedIndex::build(&docs);
                 let results = index.search(&query, 20);
                 for result in &results {
                     prop_assert!(result.score() >= 0.0, "negative score: {}", result.score());
@@ -580,7 +604,7 @@ mod tests {
                 query in "[a-z]{2,8}",
                 limit in 1_usize..20,
             ) {
-                let index = InvertedIndex::build(docs);
+                let index = InvertedIndex::build(&docs);
                 let results = index.search(&query, limit);
                 prop_assert!(results.len() <= limit);
             }
@@ -591,7 +615,7 @@ mod tests {
                 docs in arb_docs(),
                 query in "[a-z]{2,8}( [a-z]{2,8}){0,2}",
             ) {
-                let index = InvertedIndex::build(docs);
+                let index = InvertedIndex::build(&docs);
                 let results = index.search(&query, 50);
                 for window in results.windows(2) {
                     prop_assert!(
