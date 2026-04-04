@@ -102,7 +102,7 @@ fn main() {
             &query,
             limit,
             &format,
-            build_search_filters(&dirs, &exts, result_type),
+            &build_search_filters(&dirs, &exts, result_type),
             verbose,
         ),
         Commands::Explore { .. } => {
@@ -127,15 +127,15 @@ fn run_search(
     query: &str,
     limit: usize,
     format: &OutputFormat,
-    filters: SearchFilters,
+    filters: &SearchFilters,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (results, parse_report) = if verbose {
-        let output = repo::search_with_report_and_filters(repo_spec, query, limit, &filters)?;
+        let output = repo::search_with_report_and_filters(repo_spec, query, limit, filters)?;
         (output.results, output.parse_diagnostics)
     } else {
         (
-            repo::search_with_filters(repo_spec, query, limit, &filters)?.results,
+            repo::search_with_filters(repo_spec, query, limit, filters)?.results,
             None,
         )
     };
@@ -297,6 +297,7 @@ fn run_cleanup(repo_spec: Option<&str>) -> Result<(), Box<dyn std::error::Error>
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -336,7 +337,7 @@ mod tests {
                 "docs\\api".to_owned(),
                 "   ".to_owned(),
             ],
-            &[".RS".to_owned(), " md ".to_owned(), "".to_owned()],
+            &[".RS".to_owned(), " md ".to_owned(), String::new()],
             Some(SearchTypeArg::Code),
         );
 
