@@ -38,8 +38,11 @@ modules crate="repoask-core":
 modules-deps crate="repoask-core":
     cargo modules dependencies --package {{crate}} --lib
 
-machete:
-    cargo machete
+shear:
+    cargo shear
+
+udeps:
+    RUSTC_BOOTSTRAP=1 cargo udeps --workspace --all-targets --all-features
 
 # Code similarity detection (requires: cargo install similarity-rs)
 # Target: threshold 0.80 once existing duplicates are resolved
