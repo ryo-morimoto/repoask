@@ -47,6 +47,7 @@ pub enum ParseError {
 /// Parse a file using tree-sitter if the extension is supported.
 ///
 /// Returns a [`ParseOutcome`] distinguishing success, unsupported, and failure.
+#[must_use]
 pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
     let Some(ext) = filepath.rsplit('.').next() else {
         return ParseOutcome::Unsupported {
@@ -69,14 +70,13 @@ pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
 /// Parse a file, returning only the documents (ignoring skips/failures).
 ///
 /// Convenience wrapper for callers that don't need skip/failure info.
+#[must_use]
 pub fn parse_file_lenient(filepath: &str, source: &str) -> Option<Vec<IndexDocument>> {
-    let ext = filepath.rsplit('.').next()?;
-    let (language, query) = language_for_extension(ext)?;
-    let symbols = parser::extract_symbols(source, filepath, &language, query);
-    Some(symbols.into_iter().map(IndexDocument::Code).collect())
+    parse_file(filepath, source).into_lenient()
 }
 
 /// Returns true if the given extension is handled by this crate.
+#[must_use]
 pub fn supports_extension(ext: &str) -> bool {
     language_for_extension(ext).is_some()
 }
@@ -184,5 +184,17 @@ mod tests {
             parse_file("test.zig", "const x = 1;"),
             ParseOutcome::Unsupported { .. }
         ));
+    }
+
+    #[test]
+    fn test_lenient_parse_supported_file() {
+        let docs = parse_file_lenient("lib.rs", "fn add(a: i32, b: i32) -> i32 { a + b }");
+        assert!(docs.is_some());
+    }
+
+    #[test]
+    fn test_lenient_parse_unsupported_file() {
+        let docs = parse_file_lenient("test.zig", "const x = 1;");
+        assert!(docs.is_none());
     }
 }

@@ -34,10 +34,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Doc
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
-      - name: Unused dependencies
+      - name: Dependency hygiene
         run: |
-          cargo install cargo-machete --locked
-          cargo machete
+          cargo install cargo-shear --locked
+          cargo shear
       - name: Typos
         uses: crate-ci/typos@631208b7aac2daa8b707f55e7331f9112b0e062d # v1.29.10
 
@@ -56,7 +56,32 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
 
-  # Gate 3: Tests (OS matrix)
+  # Gate 3: SAST
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@06203676c62f0d3c765be3f2fcfbebbcb02d09f5 # v2
+        with:
+          tool: just
+      - name: Install Semgrep
+        run: |
+          python3 -m pip install --user --disable-pip-version-check semgrep==1.152.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Semgrep
+        run: just semgrep-sarif
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: semgrep-report
+          path: semgrep.sarif
+
+  # Gate 4: Tests (OS matrix)
   test:
     needs: check
     strategy:
@@ -83,7 +108,25 @@ jobs:
         env:
           CI: "1"
 
-  # Gate 4: Dependency audit
+  # Gate 5: Dead code / unused dependency detection
+  udeps:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e18c1a97b10d1a3 # stable
+        with:
+          toolchain: nightly
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
+      - name: Unused dependencies
+        run: cargo +nightly udeps --workspace --all-targets --all-features
+
+  # Gate 6: Dependency audit
   audit:
     needs: check
     runs-on: ubuntu-latest
@@ -95,7 +138,7 @@ jobs:
           persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
 
-  # Gate 5: Coverage
+  # Gate 7: Coverage
   coverage:
     needs: test
     runs-on: ubuntu-latest
@@ -123,7 +166,7 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
-  # Gate 6: Mutation testing (PR diff only)
+  # Gate 8: Mutation testing (PR diff only)
   mutants:
     needs: test
     if: github.event_name == 'pull_request'

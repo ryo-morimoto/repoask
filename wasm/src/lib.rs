@@ -1,7 +1,7 @@
 //! repoask WASM bindings for browser usage.
 //!
-//! Provides the same search functionality as the CLI, but operates on
-//! in-memory file contents instead of filesystem paths.
+//! Provides browser-side search over in-memory file contents.
+//! The current WASM build indexes TS/JS and Markdown via `repoask-parser`.
 
 use wasm_bindgen::prelude::*;
 
@@ -32,6 +32,7 @@ impl RepoIndex {
         clippy::missing_const_for_fn,
         reason = "`wasm_bindgen` constructors cannot be `const fn`"
     )]
+    #[must_use]
     pub fn new() -> Self {
         Self {
             documents: Vec::new(),
@@ -43,10 +44,12 @@ impl RepoIndex {
     ///
     /// Call this for each file before calling `build()`.
     /// The filepath determines the parser used (e.g. `.ts` → oxc, `.md` → markdown).
+    /// Unsupported files and parse failures are skipped.
     #[wasm_bindgen(js_name = "addFile")]
     pub fn add_file(&mut self, filepath: &str, content: &str) {
-        let docs = repoask_parser::parse_file_lenient(filepath, content);
-        self.documents.extend(docs);
+        if let Some(docs) = repoask_parser::parse_file_lenient(filepath, content) {
+            self.documents.extend(docs);
+        }
     }
 
     /// Build the search index from all added files.
@@ -60,7 +63,12 @@ impl RepoIndex {
     /// Search the index and return results as a JSON string.
     ///
     /// Returns a JSON array of search results.
-    /// Each result is `{"Code": {...}}`, `{"Doc": {...}}`, or `{"Example": {...}}`.
+    /// Each result is `{"Code": {...}}` or `{"Doc": {...}}`.
+    /// Example hits are represented as `Code` results with `is_example: true`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `build()` has not been called yet or if JSON serialization fails.
     pub fn search(&self, query: &str, limit: usize) -> Result<String, JsError> {
         let index = self
             .index
@@ -73,6 +81,7 @@ impl RepoIndex {
 
     /// Return the number of documents in the index.
     #[wasm_bindgen(js_name = "docCount")]
+    #[must_use]
     pub fn doc_count(&self) -> usize {
         self.index
             .as_ref()

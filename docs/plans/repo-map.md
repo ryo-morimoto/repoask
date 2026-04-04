@@ -326,7 +326,49 @@ pub enum CommentSource {
     PythonDocstring,
     PlainComment,
 }
+
+pub enum CommentNormalizationStatus {
+    Missing,
+    SummaryOnly,
+    Structured,
+    Failed,
+}
 ```
+
+`CommentInfo` だけだと、各言語の comment support がどこまで効いているか分からない。
+そのため parser は symbol ごとに `CommentNormalizationStatus` も出し、coverage を集計できる形にする。
+
+### 何を使うかの基準
+
+comment には大量の情報があるが、overview/search/inspect で使うのは次の条件を満たすものに限る。
+
+1. **symbol-local**: その symbol の契約や挙動に直接ひも付く
+2. **deterministic**: prose 生成なしで安定して抽出できる
+3. **compact**: token budget に対して情報効率が高い
+4. **actionable**: 次の inspect/read/test の判断に使える
+5. **graceful fallback**: 取れなくても他情報で代替できる
+
+この基準での優先順位:
+
+- Tier A: 常に使う
+  - `summary_line`
+  - `deprecated` / `internal` 相当 flag
+  - `params` / `returns` / `throws` / `errors` / `panics` の要約
+  - example の有無
+- Tier B: inspect で budget に余裕があるときだけ使う
+  - `body_preview`
+  - first example snippet
+  - section headings (`Examples`, `Errors`, `Panics`, `Safety`)
+- Tier C: 収集しても通常は使わない
+  - 長文の tutorial prose
+  - markdown decoration や link reference
+  - repo 全体の導入文や marketing 的説明
+
+mode ごとの使用方針:
+
+- `overview`: `summary_line`, flag, test linkage のみ
+- `search`: `summary_line` と contract 差分に効く最小 field のみ
+- `inspect`: `summary_line`, signature, linked tests を主にし、budget に余裕がある場合だけ B を追加
 
 ### JSDoc
 
@@ -345,6 +387,138 @@ pub enum CommentSource {
 
 - まだ未実装だが、TODO にある通り tree-sitter で `expression_statement > string` を拾う
 - Step 2 で `PythonDocstring` として `CommentInfo` に揃える
+
+## Comment coverage 計測設計
+
+### 目的
+
+- 各言語で comment normalization がどこまで機能しているかを測る
+- 「JSDoc は取れているが `@returns` は弱い」「Rustdoc は summary は取れるが `# Errors` が弱い」などを見える化する
+- 実装を追加したときに coverage が上がったか、回帰していないかを確認できるようにする
+
+ここでの coverage は「repoask が自前で何個取れたか」ではなく、**各言語の code comment を構造化して扱える reference parser を oracle とした比較** とする。
+つまり、自前 bucket の自己採点ではなく、reference parser が抽出できる情報に対して repoask がどこまで追従できているかを測る。
+
+### 測る単位
+
+- language
+- comment source (`JsDoc`, `RustDoc`, `PythonDocstring`, `PlainComment`)
+- symbol kind (`Function`, `Class`, `Type`, など)
+- normalization status (`Missing`, `SummaryOnly`, `Structured`, `Failed`)
+- reference parser が抽出できた field (`summary`, `params`, `returns`, `throws`, `examples`, `flags`)
+
+### 集計型
+
+```rust
+pub struct CommentCoverageReport {
+    pub languages: Vec<LanguageCoverage>,
+}
+
+pub struct LanguageCoverage {
+    pub language: String,
+    pub total_symbols: u32,
+    pub reference_comment_blocks: u32,
+    pub matched_comment_blocks: u32,
+    pub summary_recall: f32,
+    pub param_recall: f32,
+    pub return_recall: f32,
+    pub throws_recall: f32,
+    pub example_recall: f32,
+    pub flag_recall: f32,
+    pub failed: u32,
+    pub by_source: Vec<CommentSourceCoverage>,
+}
+
+pub struct CommentSourceCoverage {
+    pub source: CommentSource,
+    pub reference_total: u32,
+    pub matched_total: u32,
+    pub summary_recall: f32,
+    pub structured_recall: f32,
+    pub failed: u32,
+}
+```
+
+### reference parser oracle
+
+coverage の基準は repoask 自身ではなく、各言語で code comment を構造化して扱える parser の出力を正規化したものに置く。
+
+流れ:
+
+1. fixture source を用意する
+2. language-specific reference parser で comment を構造化する
+3. その出力を `ReferenceCommentInfo` に正規化する
+4. repoask の `CommentInfo` と diff を取る
+
+```rust
+pub struct ReferenceCommentInfo {
+    pub summary_line: Option<String>,
+    pub params: Vec<String>,
+    pub returns: bool,
+    pub throws: Vec<String>,
+    pub examples: usize,
+    pub flags: Vec<String>,
+}
+```
+
+exact な parser choice はまだ repo で確定していないので、ここでは interface だけを固定する。
+重要なのは「言語ごとに reference parser を選び、その出力を同じ比較用 IR に落とす」ことである。
+
+### parser 側で出す signal
+
+parser は `CommentInfo` 生成時に以下を同時に出す。
+
+- comment block が存在したか
+- source/style 判定できたか
+- `summary_line` を抽出できたか
+- structured fields (`params`, `returns`, `throws`, `examples`) を抽出できたか
+- parse failure だったか
+
+これにより、coverage は後段の heuristic ではなく parser の一次結果と reference parser 出力の diff から deterministic に集計できる。
+
+### 進め方
+
+Step を小さくするため、coverage の改善目標は段階的に置く。
+
+1. **Phase A**: `summary_line` coverage を測る
+2. **Phase B**: `params` / `returns` / `throws` / `examples` の structured coverage を測る
+3. **Phase C**: flag / section heading coverage を測る
+4. **Phase D**: linked tests や inspect の `comment_summary` 表示品質と相関を見る
+
+### どう見えるようにするか
+
+CLI surface は増やさない。開発用の local/CI artifact として出す。
+
+- `just comment-coverage` で fixture corpus に対する JSON/Markdown report を生成する
+- CI では report を artifact として保存する
+- 主要 fixture に対しては ratchet を持ち、coverage regression を検出する
+
+`overview/search/inspect` のユーザー向け surface には出さない。
+これは開発者が parser 改善を進めるための計測面である。
+
+### Fixture corpus
+
+coverage を進めるには、各言語の representative fixture が必要。
+
+- TS/JS: JSDoc (`@param`, `@returns`, `@example`, `@deprecated`)
+- Rust: rustdoc (`///`, `//!`, `# Examples`, `# Errors`, `# Panics`)
+- Python: Google / NumPy / reST docstring
+- Plain comment fallback: line comment / block comment
+
+fixture には「期待する `CommentInfo`」だけでなく、「reference parser の期待出力」も持たせる。
+repoask の coverage は fixture bucket ではなく、reference parser 出力との差分で測る。
+
+### Ratchet の考え方
+
+coverage は一気に 100% を目指さない。言語・source ごとに ratchet を持つ。
+
+例:
+
+- ts/js `summary_line` coverage >= baseline
+- rust `structured` recall >= baseline
+- failed normalization count <= baseline
+
+これにより、未対応領域を残したままでも、安全に前進できる。
 
 ## Public API / type / test linkage 設計
 
@@ -428,10 +602,12 @@ pub struct RenderBudget {
 |---|---|
 | `repoask-core::types` | `CommentInfo`, `ExportInfo`, `InvestigationOverview`, `SymbolInspect`, `RenderBudget` などを追加 |
 | `repoask-parser` / `repoask-treesitter` | JSDoc / rustdoc / docstring を `CommentInfo` に正規化。export/public metadata を追加 |
+| `repoask-parser` / `repoask-treesitter` | language/source/style/status ごとの comment coverage signal を出す |
 | `repoask-core::index` | public API / type / test linkage に使う metadata を保持し、overview/search/inspect 用の集約 API を持たせる |
 | `repoask-repo` | `overview(...)`, card-aware `search(...)`, `inspect(...)` を追加 |
 | `cli` | `overview` を実装し、独立 `extract` ではなく inspect behavior を追加。exact syntax は CLI surface 最小化を優先して決める |
 | `wasm` | investigation outputs を返す API を後追いで追加 |
+| `just` / CI | comment coverage report と ratchet を実行する |
 
 ## 追加しないもの
 
@@ -444,6 +620,8 @@ pub struct RenderBudget {
 
 - JSDoc 正規化 snapshot test
 - Rustdoc 正規化 snapshot test
+- comment coverage report snapshot test
+- language/source/status ごとの coverage aggregation test
 - public API / public type 判定 test
 - public API と test linkage の ranking test
 - `overview` snapshot test

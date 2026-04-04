@@ -1,11 +1,14 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::bm25::Bm25Scorer;
 use crate::tokenizer::{tokenize_identifier, tokenize_query, tokenize_text};
-use crate::types::{CodeResult, DocResult, IndexDocument, SearchResult};
+use crate::types::{
+    CodeResult, DocResult, IndexDocument, SearchDocumentType, SearchFilters, SearchResult,
+};
 
 // ---------------------------------------------------------------------------
 // Index internal types
@@ -53,6 +56,7 @@ impl FieldStats {
         clippy::cast_precision_loss,
         reason = "BM25 uses f32 scores and field lengths are already bounded per document"
     )]
+    #[must_use]
     pub fn avg_length(&self) -> f32 {
         if self.doc_count == 0 {
             return 0.0;
@@ -88,6 +92,10 @@ enum StoredDoc {
 
 /// BM25-backed inverted index over code symbols and documentation sections.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(
+    clippy::module_name_repetitions,
+    reason = "public API uses the standard inverted-index term"
+)]
 pub struct InvertedIndex {
     postings: HashMap<String, Vec<Posting>>,
     /// Pre-computed document frequency per term (unique `doc_id` count).
@@ -124,6 +132,7 @@ impl Ord for ScoredDoc {
 
 impl InvertedIndex {
     /// Build an index from a collection of parsed documents.
+    #[must_use]
     pub fn build(docs: &[IndexDocument]) -> Self {
         let mut index = Self {
             postings: HashMap::new(),
@@ -274,9 +283,21 @@ impl InvertedIndex {
     }
 
     /// Search the index and return the top results ranked by BM25 score.
+    #[must_use]
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
+        self.search_with_filters(query, limit, &SearchFilters::default())
+    }
+
+    /// Search the index and apply directory, extension, and type filters.
+    #[must_use]
+    pub fn search_with_filters(
+        &self,
+        query: &str,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Vec<SearchResult> {
         let query_tokens = tokenize_query(query);
-        if query_tokens.is_empty() {
+        if query_tokens.is_empty() || limit == 0 {
             return vec![];
         }
 
@@ -310,6 +331,9 @@ impl InvertedIndex {
         // Top-k selection using a min-heap of size `limit` — O(n log k).
         let mut heap: BinaryHeap<Reverse<ScoredDoc>> = BinaryHeap::with_capacity(limit + 1);
         for (doc_id, score) in doc_scores {
+            if !self.matches_filters(doc_id, filters) {
+                continue;
+            }
             heap.push(Reverse(ScoredDoc { doc_id, score }));
             if heap.len() > limit {
                 heap.pop();
@@ -328,6 +352,50 @@ impl InvertedIndex {
             .into_iter()
             .map(|sd| self.to_search_result(sd.doc_id, sd.score))
             .collect()
+    }
+
+    fn matches_filters(&self, doc_id: DocId, filters: &SearchFilters) -> bool {
+        let doc_index = usize::try_from(doc_id).unwrap_or_default();
+        let Some(doc) = self.documents.get(doc_index) else {
+            return false;
+        };
+
+        let (filepath, doc_type) = match doc {
+            StoredDoc::Code { filepath, .. } => (filepath.as_str(), SearchDocumentType::Code),
+            StoredDoc::Doc { filepath, .. } => (filepath.as_str(), SearchDocumentType::Doc),
+        };
+
+        if filters
+            .result_type
+            .is_some_and(|result_type| result_type != doc_type)
+        {
+            return false;
+        }
+
+        if !filters.dirs.is_empty()
+            && !filters
+                .dirs
+                .iter()
+                .any(|dir| path_matches_dir(filepath, dir.as_str()))
+        {
+            return false;
+        }
+
+        if !filters.exts.is_empty() {
+            let ext = Path::new(filepath)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(str::to_ascii_lowercase);
+
+            if !ext
+                .as_ref()
+                .is_some_and(|ext| filters.exts.iter().any(|candidate| candidate == ext))
+            {
+                return false;
+            }
+        }
+
+        true
     }
 
     fn to_search_result(&self, doc_id: DocId, score: f32) -> SearchResult {
@@ -363,6 +431,7 @@ impl InvertedIndex {
     }
 
     /// Return the total number of indexed documents.
+    #[must_use]
     pub fn doc_count(&self) -> usize {
         self.documents.len()
     }
@@ -371,6 +440,10 @@ impl InvertedIndex {
 fn is_example_path(filepath: &str) -> bool {
     let lower = filepath.to_lowercase();
     lower.contains("example") || lower.contains("sample") || lower.contains("demo")
+}
+
+fn path_matches_dir(filepath: &str, dir: &str) -> bool {
+    filepath.replace('\\', "/").starts_with(&format!("{dir}/"))
 }
 
 fn saturating_doc_id(value: usize) -> DocId {
@@ -520,6 +593,121 @@ mod tests {
         let index = InvertedIndex::build(&docs);
         let results = index.search("validate", 5);
         assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn test_search_with_type_filter() {
+        let docs = vec![
+            make_symbol("authenticate", "src/auth.rs"),
+            make_doc(
+                "Authentication Guide",
+                "Authenticate users with tokens",
+                "docs/auth.md",
+            ),
+        ];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            result_type: Some(SearchDocumentType::Doc),
+            ..SearchFilters::default()
+        };
+
+        let results = index.search_with_filters("authenticate", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert!(matches!(results[0], SearchResult::Doc(_)));
+    }
+
+    #[test]
+    fn test_search_with_dir_filter() {
+        let docs = vec![
+            make_symbol("validateToken", "src/auth/token.rs"),
+            make_symbol("validateToken", "examples/auth/token.rs"),
+        ];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            dirs: vec!["src".to_owned()],
+            ..SearchFilters::default()
+        };
+
+        let results = index.search_with_filters("validate token", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].filepath(), "src/auth/token.rs");
+    }
+
+    #[test]
+    fn test_search_with_extension_filter() {
+        let docs = vec![
+            make_symbol("parseConfig", "src/config.rs"),
+            make_symbol("parseConfig", "src/config.ts"),
+        ];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            exts: vec!["ts".to_owned()],
+            ..SearchFilters::default()
+        };
+
+        let results = index.search_with_filters("parse config", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].filepath(), "src/config.ts");
+    }
+
+    #[test]
+    fn test_search_with_combined_filters() {
+        let docs = vec![
+            make_doc("Authentication", "Authenticate users", "docs/auth.md"),
+            make_doc(
+                "Authentication",
+                "Authenticate users in guides",
+                "guides/auth.md",
+            ),
+            make_symbol("authenticate", "src/auth.ts"),
+        ];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            dirs: vec!["docs".to_owned()],
+            exts: vec!["md".to_owned()],
+            result_type: Some(SearchDocumentType::Doc),
+        };
+
+        let results = index.search_with_filters("authenticate", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].filepath(), "docs/auth.md");
+    }
+
+    #[test]
+    fn test_search_with_dir_filter_matches_windows_style_paths() {
+        let docs = vec![make_symbol("validateToken", "src\\auth\\token.rs")];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            dirs: vec!["src/auth".to_owned()],
+            ..SearchFilters::default()
+        };
+
+        let results = index.search_with_filters("validate token", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].filepath(), "src\\auth\\token.rs");
+    }
+
+    #[test]
+    fn test_search_with_dir_filter_does_not_match_file_named_like_directory() {
+        let docs = vec![
+            make_doc("Root docs file", "metadata", "docs"),
+            make_doc("Auth docs", "Authenticate users", "docs/auth.md"),
+        ];
+        let index = InvertedIndex::build(&docs);
+        let filters = SearchFilters {
+            dirs: vec!["docs".to_owned()],
+            ..SearchFilters::default()
+        };
+
+        let results = index.search_with_filters("docs authenticate", 10, &filters);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].filepath(), "docs/auth.md");
     }
 
     // -----------------------------------------------------------------------

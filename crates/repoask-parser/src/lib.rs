@@ -35,6 +35,7 @@ pub enum ParseError {
 ///
 /// Returns a [`ParseOutcome`] that distinguishes between success,
 /// unsupported file types, and parse failures.
+#[must_use]
 pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
     let Some(ext) = filepath.rsplit('.').next() else {
         return ParseOutcome::Unsupported {
@@ -69,9 +70,24 @@ pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
 /// Parse a single file, returning only the documents (ignoring skips/failures).
 ///
 /// Convenience wrapper for callers that don't need skip/failure info.
-pub fn parse_file_lenient(filepath: &str, source: &str) -> Vec<IndexDocument> {
-    match parse_file(filepath, source) {
-        ParseOutcome::Ok(docs) => docs,
-        ParseOutcome::Unsupported { .. } | ParseOutcome::Failed { .. } => vec![],
+#[must_use]
+pub fn parse_file_lenient(filepath: &str, source: &str) -> Option<Vec<IndexDocument>> {
+    parse_file(filepath, source).into_lenient()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_file_lenient_returns_some_for_supported_markdown() {
+        let docs = parse_file_lenient("README.md", "# Hello\n\nrepoask");
+        assert!(docs.is_some());
+    }
+
+    #[test]
+    fn parse_file_lenient_returns_none_for_unsupported_extension() {
+        let docs = parse_file_lenient("README.txt", "repoask");
+        assert!(docs.is_none());
     }
 }

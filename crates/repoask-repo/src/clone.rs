@@ -32,6 +32,11 @@ fn is_valid_name(name: &str) -> bool {
 ///
 /// Returns the path to the cloned repository directory.
 /// If the clone already exists, returns immediately.
+///
+/// # Errors
+///
+/// Returns an error if the repository spec is invalid, `git clone` fails, or filesystem setup
+/// fails.
 pub fn ensure_clone(
     owner: &str,
     repo: &str,
@@ -141,6 +146,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 /// Get the current HEAD commit hash of a cloned repo.
+#[must_use]
 pub fn head_commit(repo_dir: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["rev-parse", "HEAD"])

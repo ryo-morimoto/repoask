@@ -125,6 +125,7 @@ pub struct DocResult {
 
 impl SearchResult {
     /// Return the BM25 relevance score of this result.
+    #[must_use]
     pub const fn score(&self) -> f32 {
         match self {
             Self::Code(r) => r.score,
@@ -133,12 +134,33 @@ impl SearchResult {
     }
 
     /// Return the file path associated with this result.
+    #[must_use]
     pub fn filepath(&self) -> &str {
         match self {
             Self::Code(r) => &r.filepath,
             Self::Doc(r) => &r.filepath,
         }
     }
+}
+
+/// Filter for the type of indexed document to search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchDocumentType {
+    /// Search only code symbols.
+    Code,
+    /// Search only documentation sections.
+    Doc,
+}
+
+/// Optional filters applied during search.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchFilters {
+    /// Restrict results to files under any of these directory prefixes.
+    pub dirs: Vec<String>,
+    /// Restrict results to files with any of these extensions.
+    pub exts: Vec<String>,
+    /// Restrict results to either code or documentation.
+    pub result_type: Option<SearchDocumentType>,
 }
 
 // ---------------------------------------------------------------------------
@@ -164,4 +186,17 @@ pub enum ParseOutcome {
         /// Description of the failure.
         reason: String,
     },
+}
+
+impl ParseOutcome {
+    /// Collapse the parse outcome into documents only.
+    ///
+    /// Returns `Some` when parsing succeeded and `None` for unsupported or failed parses.
+    #[must_use]
+    pub fn into_lenient(self) -> Option<Vec<IndexDocument>> {
+        match self {
+            Self::Ok(docs) => Some(docs),
+            Self::Unsupported { .. } | Self::Failed { .. } => None,
+        }
+    }
 }

@@ -47,39 +47,39 @@ repoaskは「任意のrepo、ローカル完結、速い」で解決する。
 
 - **開発者が外部repoの使い方を調べるとき** — docs, 公開API, 型, 実装例を横断検索
 - **開発者が自分のrepoをリファクタ・レビューするとき** — 影響範囲、依存関係、モジュール構造を把握
-- **coding agentが外部repoを参照するとき** — 1コマンドで構造化された結果を取得
+- **coding agentが外部repoを参照するとき** — 特定機能のバグや想定外挙動を、公開API → 型 → テスト → 内部実装の順に追う
 
 ## Core Concept
 
 ### 3つの入口
 
 ```
-repoask search  owner/repo "query"    # 汎用検索（どのrepoでも）
-repoask explore owner/repo "query"    # 使い方を知る（外部repo向け）
-repoask trace   owner/repo file/sym   # 影響範囲を追う（自分のrepo向け）
+repoask overview owner/repo           # 公開API / 型 / テストの入口
+repoask search   owner/repo "query"   # feature/concept 起点の候補探索
+repoask <repo> <symbol-ref>           # symbol 起点で内部実装を追う（target syntax）
 ```
 
-**search** — 汎用キーワード検索。BM25 + ASTシンボル検索。コードとドキュメントを横断してヒットする。
+**overview** — README要約ではなく、公開API / 型 / 公開APIのテストを優先して返す。agent が最初に何を読むべきかを決める入口。
 
-**explore** — 外部repoの仕様理解。docs → 公開API → 型 → 実装例 → 内部実装の順に上から下へ潜る。Context7のコード特化版。
+**search** — 汎用キーワード検索。コードとドキュメントを横断するが、結果は次の調査に進みやすい card 形式に最適化する。
 
-**trace** — 自分のrepoの影響範囲追跡。変更点 → 依存先 → 依存元 → 影響範囲の順に中心から外へ広がる。コールグラフ + 型依存グラフが基盤。
+**inspect** — 公開APIや型を起点に内部実装を追う。tree 展開、raw code、関連テスト、次に読むべきヒントを返す。独立 `extract` / `trace` は長期的にここへ畳む。
 
 ### 2つの価値層
 
 | 層 | 問い | 機能 | データ |
 |---|---|---|---|
-| **検索** | 「これ何？どう使う？」 | BM25 + ASTシンボル検索 | shallow clone |
-| **理解** | 「変えたらどうなる？」 | コールグラフ + 型依存グラフ | full clone |
+| **検索** | 「どのAPI/型/テストから入るべき？」 | BM25 + ASTシンボル検索 + public/test boost | shallow clone |
+| **理解** | 「このAPIの中で何が起きている？」 | implementation tree + raw code + 型/呼び先追跡 | full clone |
 
 ### 出力例
 
 ```
 repoask search vercel/next.js "middleware authentication"
 → [
-    {type: "doc",  file: "docs/.../13-middleware.md", section: "Middleware", snippet: "Middleware allows you to run code before a request..."},
-    {type: "code", file: "packages/next/src/server/web/adapter.ts", name: "adapter", line: 23-67, kind: "function"},
-    {type: "example", file: "examples/with-iron-session/pages/api/login.ts", name: "handler", line: 8-30, kind: "function"},
+    {kind: "public_api", symbol_ref: "next:middleware", filepath: "packages/next/src/server/web/adapter.ts", signature: "middleware(req) -> Response", why: ["exact token match", "exported API", "linked tests"], next: ["inspect api:next:middleware", "read test:middleware.test.ts"]},
+    {kind: "public_type", symbol_ref: "NextRequest", filepath: "packages/next/src/server/web/spec-extension/request.ts", signature: "type NextRequest = ...", why: ["type linked from middleware API"], next: ["inspect type:NextRequest"]},
+    {kind: "test", filepath: "test/e2e/middleware.test.ts", test_name: "middleware rewrites authenticated requests", linked_symbols: ["next:middleware"]},
   ]
 ```
 
@@ -258,11 +258,11 @@ napi-rsでRustバイナリをnpmパッケージとして配布。
 
 ## 推奨要件 (SHOULD)
 
-### S1: コードブロック抽出
+### S1: symbol inspect
 
-- 検索結果のシンボルの実コードを取得する `extract` サブコマンド
-- `repoask extract owner/repo src/auth/jwt.ts:42` → 関数全体を返す
-- `repoask extract owner/repo src/auth/jwt.ts#validateToken` → シンボル名で指定
+- 公開APIや型を指定すると、raw code / implementation tree / relevant tests / next hints を返す
+- `repoask owner/repo src/auth/jwt.ts#validateToken` のような symbol ref 指定で深掘りできる形にする
+- 独立 `extract` コマンドは増やさず、inspect に統合する
 
 ### S2: ディレクトリ / 拡張子フィルタ
 
@@ -285,8 +285,8 @@ napi-rsでRustバイナリをnpmパッケージとして配布。
 
 ### S6: repo概要の取得
 
-- `repoask overview owner/repo` でREADME要約 + ディレクトリ構造 + 主要エクスポートの一覧を返す
-- agentが「まずこのrepoが何なのか」を掴むためのエントリポイント
+- `repoask overview owner/repo` で公開 API / 型 / 公開 API のテストを優先して返す
+- README や directory tree は補助情報であり、agent が最初に API 起点で調査を始めるためのエントリポイントにする
 
 ## 想定ワークフロー
 

@@ -6,8 +6,8 @@
 )]
 
 use clap::{Parser, Subcommand};
-use repoask_core::types::SearchResult;
-use repoask_repo::{cache, repo};
+use repoask_core::types::{SearchDocumentType, SearchFilters, SearchResult};
+use repoask_repo::{cache, repo, repo::ParseDiagnostics};
 
 /// Search code and documentation in any GitHub repository.
 #[derive(Parser)]
@@ -32,6 +32,18 @@ enum Commands {
         /// Output format.
         #[arg(short, long, default_value = "json")]
         format: OutputFormat,
+        /// Restrict results to files under this directory. Repeat or use commas for multiple.
+        #[arg(long = "dir", value_delimiter = ',')]
+        dirs: Vec<String>,
+        /// Restrict results to these file extensions. Repeat or use commas for multiple.
+        #[arg(long = "ext", value_delimiter = ',')]
+        exts: Vec<String>,
+        /// Restrict results to code or documentation.
+        #[arg(long = "type")]
+        result_type: Option<SearchTypeArg>,
+        /// Print parse diagnostics to stderr when rebuilding the index.
+        #[arg(long)]
+        verbose: bool,
     },
     /// Understand how to use an external repository (docs, public APIs, types, examples).
     Explore {
@@ -63,6 +75,15 @@ enum OutputFormat {
     Text,
 }
 
+/// CLI value for `--type` search filtering.
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum SearchTypeArg {
+    /// Search only code symbols.
+    Code,
+    /// Search only documentation sections.
+    Doc,
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -72,7 +93,18 @@ fn main() {
             query,
             limit,
             format,
-        } => run_search(&repo_spec, &query, limit, &format),
+            dirs,
+            exts,
+            result_type,
+            verbose,
+        } => run_search(
+            &repo_spec,
+            &query,
+            limit,
+            &format,
+            build_search_filters(&dirs, &exts, result_type),
+            verbose,
+        ),
         Commands::Explore { .. } => {
             eprintln!("repoask explore is not yet implemented. Coming soon.");
             std::process::exit(1);
@@ -95,15 +127,106 @@ fn run_search(
     query: &str,
     limit: usize,
     format: &OutputFormat,
+    filters: SearchFilters,
+    verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let results = repo::search(repo_spec, query, limit)?;
+    let (results, parse_report) = if verbose {
+        let output = repo::search_with_report_and_filters(repo_spec, query, limit, &filters)?;
+        (output.results, output.parse_diagnostics)
+    } else {
+        (
+            repo::search_with_filters(repo_spec, query, limit, &filters)?.results,
+            None,
+        )
+    };
 
     match format {
         OutputFormat::Json => print_json(&results)?,
         OutputFormat::Text => print_text(&results),
     }
 
+    if verbose {
+        print_parse_report(parse_report.as_ref())?;
+    }
+
     Ok(())
+}
+
+fn print_parse_report(report: Option<&ParseDiagnostics>) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut stderr = std::io::stderr().lock();
+    for line in format_parse_report(report) {
+        writeln!(stderr, "{line}")?;
+    }
+    Ok(())
+}
+
+fn format_parse_report(report: Option<&ParseDiagnostics>) -> Vec<String> {
+    let Some(report) = report else {
+        return vec!["verbose: reused cached index; parse report unavailable".to_owned()];
+    };
+
+    let mut lines = vec![format!(
+        "verbose: parsed {} files (unsupported: {}, failed: {}, oversized: {})",
+        report.parsed_count,
+        report.unsupported.len(),
+        report.failed.len(),
+        report.oversized.len(),
+    )];
+
+    lines.extend(
+        report
+            .unsupported
+            .iter()
+            .map(|filepath| format!("unsupported: {filepath}")),
+    );
+    lines.extend(
+        report
+            .failed
+            .iter()
+            .map(|(filepath, reason)| format!("failed: {filepath} ({reason})")),
+    );
+    lines.extend(
+        report
+            .oversized
+            .iter()
+            .map(|filepath| format!("oversized: {filepath}")),
+    );
+
+    lines
+}
+
+fn build_search_filters(
+    dirs: &[String],
+    exts: &[String],
+    result_type: Option<SearchTypeArg>,
+) -> SearchFilters {
+    SearchFilters {
+        dirs: dirs
+            .iter()
+            .filter_map(|dir| normalize_dir_filter(dir))
+            .collect(),
+        exts: exts
+            .iter()
+            .filter_map(|ext| normalize_ext_filter(ext))
+            .collect(),
+        result_type: result_type.map(|value| match value {
+            SearchTypeArg::Code => SearchDocumentType::Code,
+            SearchTypeArg::Doc => SearchDocumentType::Doc,
+        }),
+    }
+}
+
+fn normalize_dir_filter(dir: &str) -> Option<String> {
+    let normalized = dir.trim().replace('\\', "/");
+    let normalized = normalized.trim_start_matches("./").trim_matches('/');
+    (!normalized.is_empty()).then(|| normalized.to_owned())
+}
+
+fn normalize_ext_filter(ext: &str) -> Option<String> {
+    let normalized = ext.trim().trim_start_matches('.').to_ascii_lowercase();
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 fn print_json(results: &[SearchResult]) -> Result<(), serde_json::Error> {
@@ -171,4 +294,85 @@ fn run_cleanup(repo_spec: Option<&str>) -> Result<(), Box<dyn std::error::Error>
         let _ = writeln!(stderr, "cleaned up all cached data");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_parse_report_for_cache_hit() {
+        assert_eq!(
+            format_parse_report(None),
+            vec!["verbose: reused cached index; parse report unavailable"]
+        );
+    }
+
+    #[test]
+    fn format_parse_report_lists_sorted_entries() {
+        let report = ParseDiagnostics {
+            unsupported: vec!["docs/guide.txt".to_owned()],
+            failed: vec![("src/app.ts".to_owned(), "parse error".to_owned())],
+            oversized: vec!["fixtures/big.log".to_owned()],
+            parsed_count: 3,
+        };
+
+        assert_eq!(
+            format_parse_report(Some(&report)),
+            vec![
+                "verbose: parsed 3 files (unsupported: 1, failed: 1, oversized: 1)",
+                "unsupported: docs/guide.txt",
+                "failed: src/app.ts (parse error)",
+                "oversized: fixtures/big.log",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_search_filters_normalizes_dir_and_ext_values() {
+        let filters = build_search_filters(
+            &[
+                "./src/".to_owned(),
+                "docs\\api".to_owned(),
+                "   ".to_owned(),
+            ],
+            &[".RS".to_owned(), " md ".to_owned(), "".to_owned()],
+            Some(SearchTypeArg::Code),
+        );
+
+        assert_eq!(filters.dirs, vec!["src", "docs/api"]);
+        assert_eq!(filters.exts, vec!["rs", "md"]);
+        assert_eq!(filters.result_type, Some(SearchDocumentType::Code));
+    }
+
+    #[test]
+    fn cli_parses_search_filters() {
+        let cli = Cli::try_parse_from([
+            "repoask",
+            "search",
+            "owner/repo",
+            "query",
+            "--dir",
+            "src",
+            "--ext",
+            "ts,js",
+            "--type",
+            "code",
+        ])
+        .expect("search command should parse");
+
+        let Commands::Search {
+            dirs,
+            exts,
+            result_type,
+            ..
+        } = cli.command
+        else {
+            panic!("expected search command");
+        };
+
+        assert_eq!(dirs, vec!["src"]);
+        assert_eq!(exts, vec!["ts", "js"]);
+        assert!(matches!(result_type, Some(SearchTypeArg::Code)));
+    }
 }

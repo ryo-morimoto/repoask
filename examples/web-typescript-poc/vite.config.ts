@@ -6,4 +6,10 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["repoask-wasm"],
   },
+  server: {
+    fs: {
+      // Allow serving wasm files from the workspace root
+      allow: ["../.."],
+    },
+  },
 });

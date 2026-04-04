@@ -38,6 +38,7 @@ enum FileResult {
 /// parallel walker and `crossbeam-channel`.
 ///
 /// Returns both the documents and a report of what was skipped/failed.
+#[must_use]
 pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
     let (tx, rx) = crossbeam_channel::unbounded::<FileResult>();
     let root_dir = root.to_path_buf();
@@ -134,6 +135,12 @@ pub fn parse_directory(root: &Path) -> (Vec<IndexDocument>, ParseReport) {
             }
         }
     }
+
+    report.unsupported.sort_unstable();
+    report.oversized.sort_unstable();
+    report
+        .failed
+        .sort_unstable_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
 
     (documents, report)
 }

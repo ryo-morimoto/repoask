@@ -13,6 +13,7 @@ use oxc_span::{SourceType, Span};
 use repoask_core::types::{Symbol, SymbolKind};
 
 /// Extract symbols from TypeScript/JavaScript source code using `oxc_parser`.
+#[must_use]
 pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(filepath).unwrap_or_default();

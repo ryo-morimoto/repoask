@@ -10,6 +10,7 @@ thread_local! {
 ///
 /// Handles `camelCase`, `PascalCase`, `snake_case`, `kebab-case`, and
 /// consecutive uppercase runs (e.g. `parseJSON` -> `["parse", "json"]`).
+#[must_use]
 pub fn split_identifier(name: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
@@ -60,6 +61,7 @@ fn stem_tokens(tokens: impl Iterator<Item = String>) -> Vec<String> {
 }
 
 /// Tokenize natural language text into lowercase stemmed tokens.
+#[must_use]
 pub fn tokenize_text(text: &str) -> Vec<String> {
     let words = text
         .split(|c: char| !c.is_alphanumeric() && c != '_')
@@ -69,11 +71,13 @@ pub fn tokenize_text(text: &str) -> Vec<String> {
 }
 
 /// Tokenize a code identifier: split then stem each part.
+#[must_use]
 pub fn tokenize_identifier(name: &str) -> Vec<String> {
     stem_tokens(split_identifier(name).into_iter())
 }
 
 /// Tokenize a query string (same pipeline as text, for consistent matching).
+#[must_use]
 pub fn tokenize_query(query: &str) -> Vec<String> {
     tokenize_text(query)
 }

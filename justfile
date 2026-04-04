@@ -10,6 +10,12 @@ lint:
 test:
     cargo nextest run --workspace
 
+semgrep:
+    semgrep scan --config p/rust --config p/typescript --metrics=off --error --exclude wasm/pkg .
+
+semgrep-sarif:
+    semgrep scan --config p/rust --config p/typescript --metrics=off --error --exclude wasm/pkg --sarif-output semgrep.sarif .
+
 snapshot:
     cargo insta test --workspace
 

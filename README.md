@@ -34,6 +34,10 @@ Options:
 
 - `-n`, `--limit` — max results (default: 10)
 - `-f`, `--format` — output format: `json` (default) or `text`
+- `--dir` — restrict results to files under a directory prefix. Repeat or use commas
+- `--ext` — restrict results to file extensions. Repeat or use commas
+- `--type` — restrict results to `code` or `doc`
+- `--verbose` — print parse diagnostics to stderr when rebuilding the index, or note cache reuse on cache hits
 
 Output includes code symbols (functions, classes, types) and documentation sections, ranked by relevance.
 
@@ -42,6 +46,12 @@ $ repoask search colinhacks/zod "parse error" --format text
 [code] src/ZodError.ts:15-120  Class ZodError  (score: 0.847)
 [doc]  README.md#error-handling  "ZodError is a subclass of Error..."  (score: 0.723)
 [code] src/types.ts:340-365  Function safeParse  (score: 0.651)
+```
+
+Filter to docs under `docs/`:
+
+```sh
+repoask search owner/repo "authentication" --dir docs --ext md --type doc
 ```
 
 ### explore

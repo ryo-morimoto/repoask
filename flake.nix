@@ -42,11 +42,13 @@
             cargo-deny     # dependency audit
             cargo-insta    # snapshot testing
             cargo-llvm-cov # coverage reporting
-            cargo-machete  # unused dependency detection
+            cargo-shear    # static unused/misplaced dependency detection
+            cargo-udeps    # unused dependency linting
             cargo-modules  # module structure visualization
             gitleaks       # secret scanning
             just           # task runner
             prek           # git hooks
+            semgrep        # SAST scanning
             typos          # spell checker
 
             # === Documentation ===

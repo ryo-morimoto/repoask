@@ -2,11 +2,12 @@
 
 use fs2::FileExt;
 use repoask_core::index::InvertedIndex;
-use repoask_core::types::SearchResult;
+use repoask_core::types::{SearchFilters, SearchResult};
 
 use crate::cache;
 use crate::clone;
 use crate::index_store;
+pub use crate::parse::ParseReport as ParseDiagnostics;
 
 /// Error type for repository operations.
 #[derive(Debug, thiserror::Error)]
@@ -32,11 +33,27 @@ pub enum RepoError {
     },
 }
 
+/// Search output including optional parse diagnostics from a rebuilt index.
+pub struct SearchOutput {
+    /// Ranked search results.
+    pub results: Vec<SearchResult>,
+    /// Parse diagnostics when the index was rebuilt during this search.
+    ///
+    /// `None` indicates a cache hit, so no parse step ran.
+    pub parse_diagnostics: Option<ParseDiagnostics>,
+}
+
+struct LoadedIndex {
+    index: InvertedIndex,
+    parse_report: Option<ParseDiagnostics>,
+}
+
 /// Parse an `owner/repo` spec, optionally with `@ref`.
 ///
 /// Examples:
 /// - `"vercel/next.js"` → `("vercel", "next.js", None)`
 /// - `"vercel/next.js@v14"` → `("vercel", "next.js", Some("v14"))`
+#[must_use]
 pub fn parse_repo_spec(spec: &str) -> Option<(&str, &str, Option<&str>)> {
     let (main, ref_spec) = match spec.split_once('@') {
         Some((main, r)) => (main, Some(r)),
@@ -53,7 +70,57 @@ pub fn parse_repo_spec(spec: &str) -> Option<(&str, &str, Option<&str>)> {
 }
 
 /// Search a repository. Handles clone, indexing, caching, and search.
+///
+/// # Errors
+///
+/// Returns an error if the repository spec is invalid, cloning fails, cached data cannot be
+/// loaded, or index files cannot be written.
 pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>, RepoError> {
+    Ok(search_with_filters(spec, query, limit, &SearchFilters::default())?.results)
+}
+
+/// Search a repository and apply optional result filters.
+///
+/// # Errors
+///
+/// Returns an error if the repository spec is invalid, cloning fails, cached data cannot be
+/// loaded, or index files cannot be written.
+pub fn search_with_filters(
+    spec: &str,
+    query: &str,
+    limit: usize,
+    filters: &SearchFilters,
+) -> Result<SearchOutput, RepoError> {
+    search_with_report_and_filters(spec, query, limit, filters)
+}
+
+/// Search a repository and include parse diagnostics when rebuilding the index.
+///
+/// # Errors
+///
+/// Returns an error if the repository spec is invalid, cloning fails, cached data cannot be
+/// loaded, or index files cannot be written.
+pub fn search_with_report(
+    spec: &str,
+    query: &str,
+    limit: usize,
+) -> Result<SearchOutput, RepoError> {
+    search_with_report_and_filters(spec, query, limit, &SearchFilters::default())
+}
+
+/// Search a repository, apply optional result filters, and include parse diagnostics when
+/// rebuilding the index.
+///
+/// # Errors
+///
+/// Returns an error if the repository spec is invalid, cloning fails, cached data cannot be
+/// loaded, or index files cannot be written.
+pub fn search_with_report_and_filters(
+    spec: &str,
+    query: &str,
+    limit: usize,
+    filters: &SearchFilters,
+) -> Result<SearchOutput, RepoError> {
     let (owner, repo, ref_spec) = parse_repo_spec(spec).ok_or_else(|| RepoError::InvalidSpec {
         spec: spec.to_owned(),
     })?;
@@ -71,13 +138,16 @@ pub fn search(spec: &str, query: &str, limit: usize) -> Result<Vec<SearchResult>
     lock_file.lock_exclusive()?;
 
     // Try loading cached index (lock released on drop)
-    let index = load_or_build_index(owner, repo, ref_spec)?;
+    let loaded = load_or_build_index(owner, repo, ref_spec)?;
     drop(lock_file);
 
     // Best-effort cache eviction (non-fatal)
     let _ = cache::evict_if_needed();
 
-    Ok(index.search(query, limit))
+    Ok(SearchOutput {
+        results: loaded.index.search_with_filters(query, limit, filters),
+        parse_diagnostics: loaded.parse_report,
+    })
 }
 
 /// Load a cached index if valid, otherwise build a new one.
@@ -85,7 +155,7 @@ fn load_or_build_index(
     owner: &str,
     repo: &str,
     ref_spec: Option<&str>,
-) -> Result<InvertedIndex, RepoError> {
+) -> Result<LoadedIndex, RepoError> {
     let index_path = cache::repo_index_path(owner, repo);
     let meta_path = cache::repo_meta_path(owner, repo);
 
@@ -99,7 +169,10 @@ fn load_or_build_index(
                     && let Some(current_hash) = clone::head_commit(&clone_dir)
                     && meta.matches_commit(&current_hash)
                 {
-                    return Ok(index_store::load_index(&index_path)?);
+                    return Ok(LoadedIndex {
+                        index: index_store::load_index(&index_path)?,
+                        parse_report: None,
+                    });
                 }
             }
         }
@@ -108,7 +181,7 @@ fn load_or_build_index(
     // Need to build index: ensure clone exists, parse, build, save
     let clone_dir = clone::ensure_clone(owner, repo, ref_spec)?;
 
-    let (documents, _report) = crate::parse::parse_directory(&clone_dir);
+    let (documents, report) = crate::parse::parse_directory(&clone_dir);
     let index = InvertedIndex::build(&documents);
 
     // Save index and metadata
@@ -121,7 +194,10 @@ fn load_or_build_index(
     let meta = index_store::IndexMeta::new(commit_hash);
     index_store::save_meta(&meta, &meta_path)?;
 
-    Ok(index)
+    Ok(LoadedIndex {
+        index,
+        parse_report: Some(report),
+    })
 }
 
 #[cfg(test)]

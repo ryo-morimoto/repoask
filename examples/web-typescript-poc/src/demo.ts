@@ -1,6 +1,8 @@
 import init, { RepoIndex } from "repoask-wasm";
 import { fetchRepoFiles } from "./repo-fetcher.js";
 
+await init();
+
 const repoInput = document.getElementById("repo-input") as HTMLInputElement;
 const loadBtn = document.getElementById("load-btn") as HTMLButtonElement;
 const status = document.getElementById("status") as HTMLDivElement;
@@ -29,9 +31,6 @@ loadBtn.addEventListener("click", async () => {
   resultsDiv.innerHTML = "";
 
   try {
-    setStatus("Initializing WASM...");
-    await init();
-
     setStatus(`Fetching ${owner}/${repo}@${ref ?? "HEAD"}...`);
 
     const result = await fetchRepoFiles(owner, repo, ref ?? "HEAD", {

@@ -31,6 +31,7 @@ pub struct IndexMeta {
 
 impl IndexMeta {
     /// Create metadata for a freshly built index.
+    #[must_use]
     pub fn new(commit_hash: String) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -46,17 +47,23 @@ impl IndexMeta {
     }
 
     /// Check if the index format is compatible with the current version.
+    #[must_use]
     pub const fn is_compatible(&self) -> bool {
         self.index_format_version == INDEX_FORMAT_VERSION
     }
 
     /// Check if the index was built from the same commit.
+    #[must_use]
     pub fn matches_commit(&self, commit_hash: &str) -> bool {
         self.commit_hash == commit_hash
     }
 }
 
 /// Save an index to disk using postcard.
+///
+/// # Errors
+///
+/// Returns an error if serialization fails or the file cannot be written.
 pub fn save_index(index: &InvertedIndex, path: &Path) -> Result<(), SaveError> {
     let bytes = postcard::to_stdvec(index).map_err(SaveError::Encode)?;
     std::fs::write(path, &bytes)?;
@@ -66,6 +73,10 @@ pub fn save_index(index: &InvertedIndex, path: &Path) -> Result<(), SaveError> {
 /// Load an index from disk.
 ///
 /// Rejects files larger than 500 MB to guard against tampered cache files.
+///
+/// # Errors
+///
+/// Returns an error if the file is too large, cannot be read, or fails to deserialize.
 pub fn load_index(path: &Path) -> Result<InvertedIndex, LoadError> {
     let file_size = path.metadata()?.len();
     if file_size > MAX_INDEX_FILE_SIZE {
@@ -77,6 +88,10 @@ pub fn load_index(path: &Path) -> Result<InvertedIndex, LoadError> {
 }
 
 /// Save index metadata as JSON.
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails or the file cannot be written.
 pub fn save_meta(meta: &IndexMeta, path: &Path) -> Result<(), SaveError> {
     let json = serde_json::to_string_pretty(meta).map_err(SaveError::Json)?;
     std::fs::write(path, json)?;
@@ -86,6 +101,10 @@ pub fn save_meta(meta: &IndexMeta, path: &Path) -> Result<(), SaveError> {
 /// Load index metadata from JSON.
 ///
 /// Rejects files larger than 1 MB.
+///
+/// # Errors
+///
+/// Returns an error if the file is too large, cannot be read, or fails to deserialize.
 pub fn load_meta(path: &Path) -> Result<IndexMeta, LoadError> {
     let file_size = path.metadata()?.len();
     if file_size > MAX_META_FILE_SIZE {

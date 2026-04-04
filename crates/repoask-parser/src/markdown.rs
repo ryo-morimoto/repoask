@@ -1,6 +1,7 @@
 use repoask_core::types::DocSection;
 
 /// Parse a markdown file into sections split by headings.
+#[must_use]
 pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
     let mut sections = Vec::new();
     let mut heading_stack: Vec<(u8, String)> = Vec::new();

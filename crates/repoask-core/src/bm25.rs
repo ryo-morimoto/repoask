@@ -8,6 +8,10 @@ const B: f32 = 0.75;
 const DEFAULT_WEIGHTS: [f32; NUM_FIELDS] = [4.0, 2.0, 1.5, 1.0];
 
 /// BM25 scorer with per-field weight support.
+#[allow(
+    clippy::module_name_repetitions,
+    reason = "public API uses the established BM25 terminology"
+)]
 pub struct Bm25Scorer {
     weights: [f32; NUM_FIELDS],
 }
@@ -31,6 +35,7 @@ pub struct ScoreInput<'a> {
 
 impl Bm25Scorer {
     /// Create a scorer with default field weights.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             weights: DEFAULT_WEIGHTS,
@@ -38,11 +43,13 @@ impl Bm25Scorer {
     }
 
     /// Create a scorer with custom field weights.
+    #[must_use]
     pub const fn with_weights(weights: [f32; NUM_FIELDS]) -> Self {
         Self { weights }
     }
 
     /// Return the weight multiplier for the given field.
+    #[must_use]
     pub fn weight(&self, field_id: FieldId) -> f32 {
         self.weights
             .get(usize::from(field_id))
@@ -55,6 +62,7 @@ impl Bm25Scorer {
         clippy::cast_possible_truncation,
         reason = "BM25 scores are intentionally stored as f32 throughout the index"
     )]
+    #[must_use]
     pub fn idf(&self, doc_freq: u32, total_docs: u32) -> f32 {
         let n = f64::from(doc_freq);
         let total = f64::from(total_docs);
@@ -62,6 +70,7 @@ impl Bm25Scorer {
     }
 
     /// Compute TF component with length normalization for a specific field.
+    #[must_use]
     pub fn tf(&self, term_freq: u16, field_length: u16, field_stats: &FieldStats) -> f32 {
         let tf = f32::from(term_freq);
         let dl = f32::from(field_length);
@@ -73,6 +82,7 @@ impl Bm25Scorer {
     }
 
     /// Compute the full BM25 score for a single term hit in a specific field.
+    #[must_use]
     pub fn score(&self, input: ScoreInput<'_>) -> f32 {
         let idf = self.idf(input.doc_freq, input.total_docs);
         let tf = self.tf(input.term_freq, input.field_length, input.field_stats);

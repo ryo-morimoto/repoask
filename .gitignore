@@ -1,6 +1,8 @@
 /target
+/wasm/pkg/
 lcov.info
 mutants.out/
+semgrep.sarif
 .env
 .env.*
 !.env.example
