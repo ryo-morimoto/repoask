@@ -1,5 +1,5 @@
 ---
-title: refactor: Introduce program facts architecture
+title: "refactor: Introduce program facts architecture"
 type: refactor
 status: active
 date: 2026-04-05
