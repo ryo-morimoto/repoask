@@ -35,9 +35,9 @@ tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
 tree-sitter-ruby = "0.23"
 oxc_parser = "0.123"
-oxc_allocator = "0.72"
-oxc_ast = "0.72"
-oxc_span = "0.72"
+oxc_allocator = "0.123"
+oxc_ast = "0.123"
+oxc_span = "0.123"
 ignore = "0.4"
 
 [workspace.lints.rust]
