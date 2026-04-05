@@ -23,7 +23,7 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
         return vec![];
     }
 
-    let comments = build_comment_map(source, &ret.program.comments);
+    let comments = build_comment_map(source, ret.program.comments.as_slice());
     let mut ctx = ExtractCtx::new(filepath, source, comments);
 
     for stmt in &ret.program.body {
@@ -223,7 +223,7 @@ fn extract_from_var_decl(decl: &VariableDeclaration<'_>, ctx: &mut ExtractCtx<'_
             continue;
         }
 
-        if let BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id {
             let params = match declarator.init.as_ref() {
                 Some(Expression::ArrowFunctionExpression(arrow)) => extract_params(&arrow.params),
                 Some(Expression::FunctionExpression(func)) => extract_params(&func.params),
@@ -260,8 +260,8 @@ fn extract_params(params: &FormalParameters<'_>) -> Vec<String> {
 }
 
 fn binding_pattern_name(pattern: &BindingPattern<'_>) -> Option<String> {
-    match &pattern.kind {
-        BindingPatternKind::BindingIdentifier(id) => Some(id.name.to_string()),
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => Some(id.name.to_string()),
         _ => None,
     }
 }
