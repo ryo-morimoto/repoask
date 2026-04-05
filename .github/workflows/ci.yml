@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
 
 # Default: no permissions. Override per-job.
 permissions: {}
@@ -15,8 +18,64 @@ env:
   RUSTC_WRAPPER: "sccache"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      rust_changed: ${{ steps.classify.outputs.rust_changed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "rust_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" > changed.txt
+
+          if [ ! -s changed.txt ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "rust_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if rg -q -v '^(docs/|.*\.md$|LICENSE(\..*)?$)' changed.txt; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if rg -q '^(cli/|crates/|wasm/|\.cargo/)|(^|/)(Cargo\.toml|Cargo\.lock|deny\.toml|clippy\.toml)$' changed.txt; then
+            echo "rust_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  typos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Typos
+        uses: crate-ci/typos@02ea592e44b3a53c302f697cddca7641cd051c3d # v1.29.10
+
   # Gate 1: Fast checks (< 1 min)
   check:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.rust_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,6 +88,9 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: taiki-e/install-action@7a562dfa955aa2e4d5b0fd6ebd57ff9715c07b0b # v2
+        with:
+          tool: cargo-shear@1.11.2
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -36,11 +98,7 @@ jobs:
       - name: Doc
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
       - name: Dependency hygiene
-        run: |
-          cargo install cargo-shear --locked
-          cargo shear
-      - name: Typos
-        uses: crate-ci/typos@02ea592e44b3a53c302f697cddca7641cd051c3d # v1.29.10
+        run: cargo shear
 
   # Gate 2: Secret scanning
   secrets:
@@ -59,6 +117,8 @@ jobs:
 
   # Gate 3: SAST
   sast:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,13 +142,40 @@ jobs:
           name: semgrep-report
           path: semgrep.sarif
 
-  # Gate 4: Tests (OS matrix)
-  test:
-    needs: check
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  # Gate 4a: Tests (Ubuntu on PR/main/schedule)
+  test-ubuntu:
+    needs: [changes, check]
+    if: needs.check.result == 'success' && (github.event_name != 'pull_request' || needs.changes.outputs.rust_changed == 'true')
+    name: test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: taiki-e/install-action@7a562dfa955aa2e4d5b0fd6ebd57ff9715c07b0b # v2
+        with:
+          tool: nextest,cargo-insta
+      - name: Tests
+        run: cargo nextest run --workspace --profile ci
+      - name: Doc tests
+        run: cargo test --workspace --doc
+      - name: Snapshot check
+        run: cargo insta test --workspace --unreferenced reject
+        env:
+          CI: "1"
+
+  # Gate 4b: macOS compatibility (main + nightly only)
+  test-macos:
+    needs: [check]
+    if: needs.check.result == 'success' && github.event_name != 'pull_request'
+    name: test (macos-latest)
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
@@ -113,7 +200,8 @@ jobs:
 
   # Gate 5: Dead code / unused dependency detection
   udeps:
-    needs: check
+    needs: [changes, check]
+    if: needs.check.result == 'success' && (github.event_name != 'pull_request' || needs.changes.outputs.rust_changed == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -127,14 +215,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: nightly
-      - name: Install cargo-udeps
-        run: cargo install cargo-udeps --locked
+      - uses: taiki-e/install-action@7a562dfa955aa2e4d5b0fd6ebd57ff9715c07b0b # v2
+        with:
+          tool: cargo-udeps@0.1.60
       - name: Unused dependencies
         run: cargo +nightly udeps --workspace --all-targets --all-features
 
   # Gate 6: Dependency audit
   audit:
-    needs: check
+    needs: [changes, check]
+    if: needs.check.result == 'success' && (github.event_name != 'pull_request' || needs.changes.outputs.rust_changed == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -145,11 +235,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
+      - uses: taiki-e/install-action@7a562dfa955aa2e4d5b0fd6ebd57ff9715c07b0b # v2
+        with:
+          tool: cargo-deny@0.19.0
+      - name: Dependency audit
+        run: cargo deny check --all-features
 
   # Gate 7: Coverage
   coverage:
-    needs: test
+    needs: [changes, check]
+    if: needs.check.result == 'success' && (github.event_name != 'pull_request' || needs.changes.outputs.rust_changed == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -178,8 +273,8 @@ jobs:
 
   # Gate 8: Mutation testing (PR diff only)
   mutants:
-    needs: test
-    if: github.event_name == 'pull_request'
+    needs: [changes, check]
+    if: github.event_name == 'pull_request' && needs.check.result == 'success' && needs.changes.outputs.rust_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -195,8 +290,10 @@ jobs:
       - uses: taiki-e/install-action@7a562dfa955aa2e4d5b0fd6ebd57ff9715c07b0b # v2
         with:
           tool: nextest,cargo-mutants
+      - name: Generate PR diff for cargo-mutants
+        run: git diff --binary --unified=0 "${{ github.event.pull_request.base.sha }}...HEAD" > pr.diff
       - name: Mutation testing (PR diff)
-        run: cargo mutants --in-diff origin/${{ github.base_ref }}...HEAD --test-tool nextest --timeout 120
+        run: cargo mutants --in-diff pr.diff --test-tool nextest --timeout 120
       - name: Upload mutants report
         if: failure()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

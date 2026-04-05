@@ -3,7 +3,9 @@ name: Benchmarks
 on:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '47 3 * * *'
 
 permissions:
   contents: read
@@ -20,7 +22,5 @@ jobs:
         with:
           toolchain: stable
       - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - name: Build benchmarks
-        run: cargo bench -p repoask-core --no-run
       - name: Run benchmarks
         run: cargo bench -p repoask-core
