@@ -153,7 +153,9 @@ pub enum LoadError {
 mod tests {
     use super::*;
     use repoask_core::index::InvertedIndex;
-    use repoask_core::types::{DocSection, IndexDocument, Symbol, SymbolKind};
+    use repoask_core::types::{
+        CommentInfo, CommentSource, DocSection, ExportInfo, IndexDocument, Symbol, SymbolKind,
+    };
 
     fn sample_index() -> InvertedIndex {
         let docs = vec![
@@ -163,8 +165,13 @@ mod tests {
                 filepath: "src/auth.rs".to_owned(),
                 start_line: 1,
                 end_line: 20,
-                doc_comment: Some("Validates a JWT token".to_owned()),
                 params: vec!["token".to_owned()],
+                signature_preview: Some("validateToken(token)".to_owned()),
+                comment: CommentInfo::from_normalized_text(
+                    "Validates a JWT token",
+                    CommentSource::RustDoc,
+                ),
+                export: ExportInfo::default(),
             }),
             IndexDocument::Doc(DocSection {
                 filepath: "README.md".to_owned(),

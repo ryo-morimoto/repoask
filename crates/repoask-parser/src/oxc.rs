@@ -10,17 +10,30 @@ use oxc_ast::Comment;
 use oxc_ast::ast::*;
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
-use repoask_core::types::{Symbol, SymbolKind};
+use repoask_core::types::{
+    CommentInfo, CommentSource, ExportInfo, ExportKind, IndexDocument, Publicness, Reexport,
+    Symbol, SymbolKind,
+};
 
 /// Extract symbols from TypeScript/JavaScript source code using `oxc_parser`.
 #[must_use]
 pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
+    extract_ts_context(source, filepath).symbols
+}
+
+/// Extract parser documents from TypeScript/JavaScript source code using `oxc_parser`.
+#[must_use]
+pub fn extract_ts_documents(source: &str, filepath: &str) -> Vec<IndexDocument> {
+    extract_ts_context(source, filepath).into_documents()
+}
+
+fn extract_ts_context<'a>(source: &'a str, filepath: &'a str) -> ExtractCtx<'a> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(filepath).unwrap_or_default();
 
     let ret = Parser::new(&allocator, source, source_type).parse();
     if ret.panicked {
-        return vec![];
+        return ExtractCtx::new(filepath, source, HashMap::new());
     }
 
     let comments = build_comment_map(source, ret.program.comments.as_slice());
@@ -30,7 +43,7 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
         extract_from_statement(stmt, &mut ctx);
     }
 
-    ctx.symbols
+    ctx
 }
 
 /// Build a map from token start offset → cleaned doc comment text.
@@ -38,7 +51,7 @@ pub fn extract_ts_symbols(source: &str, filepath: &str) -> Vec<Symbol> {
 /// Uses oxc's `Comment.attached_to` field which gives the start offset of
 /// the token the comment is attached to. This replaces the previous
 /// `O(file_size)` reverse-scan per symbol with O(1) `HashMap` lookup.
-fn build_comment_map(source: &str, comments: &[Comment]) -> HashMap<u32, String> {
+fn build_comment_map(source: &str, comments: &[Comment]) -> HashMap<u32, CommentInfo> {
     let mut map: HashMap<u32, Vec<&Comment>> = HashMap::new();
     for comment in comments {
         map.entry(comment.attached_to).or_default().push(comment);
@@ -46,16 +59,15 @@ fn build_comment_map(source: &str, comments: &[Comment]) -> HashMap<u32, String>
 
     let mut result = HashMap::new();
     for (attached_to, group) in map {
-        let cleaned = clean_comment_group(source, &group);
-        if !cleaned.is_empty() {
-            result.insert(attached_to, cleaned);
+        if let Some(comment) = normalize_comment_group(source, &group) {
+            result.insert(attached_to, comment);
         }
     }
     result
 }
 
 /// Clean and join a group of comments attached to the same token.
-fn clean_comment_group(source: &str, comments: &[&Comment]) -> String {
+fn normalize_comment_group(source: &str, comments: &[&Comment]) -> Option<CommentInfo> {
     let mut parts = Vec::new();
     for comment in comments {
         let text = &source[comment.span.start as usize..comment.span.end as usize];
@@ -64,7 +76,18 @@ fn clean_comment_group(source: &str, comments: &[&Comment]) -> String {
             parts.push(cleaned);
         }
     }
-    parts.join(" ")
+
+    let source = if comments.iter().any(|comment| {
+        source[comment.span.start as usize..comment.span.end as usize]
+            .trim_start()
+            .starts_with("/**")
+    }) {
+        CommentSource::JsDoc
+    } else {
+        CommentSource::PlainComment
+    };
+
+    CommentInfo::from_normalized_text(&parts.join(" "), source)
 }
 
 /// Clean a single comment's raw text (strip delimiters and asterisks).
@@ -89,38 +112,85 @@ struct ExtractCtx<'a> {
     filepath: &'a str,
     line_index: LineIndex,
     /// Pre-computed doc comments keyed by token start offset.
-    comments: HashMap<u32, String>,
+    comments: HashMap<u32, CommentInfo>,
     symbols: Vec<Symbol>,
+    reexports: Vec<Reexport>,
 }
 
 impl<'a> ExtractCtx<'a> {
-    fn new(filepath: &'a str, source: &'a str, comments: HashMap<u32, String>) -> Self {
+    fn new(filepath: &'a str, source: &'a str, comments: HashMap<u32, CommentInfo>) -> Self {
         Self {
             filepath,
             line_index: LineIndex::new(source),
             comments,
             symbols: Vec::new(),
+            reexports: Vec::new(),
         }
     }
 
+    fn into_documents(self) -> Vec<IndexDocument> {
+        self.symbols
+            .into_iter()
+            .map(IndexDocument::Code)
+            .chain(self.reexports.into_iter().map(IndexDocument::Reexport))
+            .collect()
+    }
+
     /// Push a symbol with common field wiring.
-    fn push(&mut self, name: String, kind: SymbolKind, span: Span, params: Vec<String>) {
+    fn push(
+        &mut self,
+        name: String,
+        kind: SymbolKind,
+        span: Span,
+        params: Vec<String>,
+        export: ExportInfo,
+    ) {
+        let signature_preview = Some(build_signature_preview(kind, &name, &params));
         self.symbols.push(Symbol {
             name,
             kind,
             filepath: self.filepath.to_owned(),
             start_line: self.line_index.line_of(span.start),
             end_line: self.line_index.line_of(span.end),
-            doc_comment: self.comments.get(&span.start).cloned(),
             params,
+            signature_preview,
+            comment: self.comments.get(&span.start).cloned(),
+            export,
         });
+    }
+
+    fn push_reexport(
+        &mut self,
+        span: Span,
+        local_name: String,
+        exported_name: String,
+        source_specifier: Option<String>,
+        is_type_only: bool,
+    ) {
+        let (start_line, end_line) = self.span_lines(span);
+        self.reexports.push(Reexport {
+            filepath: self.filepath.to_owned(),
+            start_line,
+            end_line,
+            local_name,
+            exported_name,
+            source_specifier,
+            is_type_only,
+        });
+    }
+
+    fn span_lines(&self, span: Span) -> (u32, u32) {
+        (
+            self.line_index.line_of(span.start),
+            self.line_index.line_of(span.end),
+        )
     }
 }
 
 fn extract_from_statement(stmt: &Statement<'_>, ctx: &mut ExtractCtx<'_>) {
     // Delegate declarations shared between Statement and Declaration enums
     if let Some(decl) = stmt.as_declaration() {
-        extract_from_declaration(decl, ctx);
+        extract_from_declaration(decl, ctx, &ExportInfo::private());
         return;
     }
 
@@ -130,11 +200,47 @@ fn extract_from_statement(stmt: &Statement<'_>, ctx: &mut ExtractCtx<'_>) {
         }
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
-                extract_from_declaration(decl, ctx);
+                extract_from_declaration(decl, ctx, &ExportInfo::public_named());
+            } else {
+                extract_reexports(export, ctx);
             }
+        }
+        Statement::ExportAllDeclaration(export) => {
+            extract_export_all(export, ctx);
         }
         _ => {}
     }
+}
+
+fn extract_reexports(export: &ExportNamedDeclaration<'_>, ctx: &mut ExtractCtx<'_>) {
+    let source_specifier = export
+        .source
+        .as_ref()
+        .map(|source| source.value.to_string());
+    let declaration_is_type_only = export.export_kind == ImportOrExportKind::Type;
+
+    for specifier in &export.specifiers {
+        ctx.push_reexport(
+            specifier.span,
+            specifier.local.name().to_string(),
+            specifier.exported.name().to_string(),
+            source_specifier.clone(),
+            declaration_is_type_only || specifier.export_kind == ImportOrExportKind::Type,
+        );
+    }
+}
+
+fn extract_export_all(export: &ExportAllDeclaration<'_>, ctx: &mut ExtractCtx<'_>) {
+    ctx.push_reexport(
+        export.span,
+        "*".to_owned(),
+        export
+            .exported
+            .as_ref()
+            .map_or_else(|| "*".to_owned(), |name| name.name().to_string()),
+        Some(export.source.value.to_string()),
+        export.export_kind == ImportOrExportKind::Type,
+    );
 }
 
 fn extract_from_export_default(
@@ -152,6 +258,7 @@ fn extract_from_export_default(
                 SymbolKind::Function,
                 func.span,
                 extract_params(&func.params),
+                ExportInfo::public_default(),
             );
         }
         ExportDefaultDeclarationKind::ClassDeclaration(class) => {
@@ -159,13 +266,19 @@ fn extract_from_export_default(
                 .id
                 .as_ref()
                 .map_or_else(|| "default".to_owned(), |id| id.name.to_string());
-            ctx.push(name, SymbolKind::Class, class.span, vec![]);
+            ctx.push(
+                name,
+                SymbolKind::Class,
+                class.span,
+                vec![],
+                ExportInfo::public_default(),
+            );
         }
         _ => {}
     }
 }
 
-fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>) {
+fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>, export: &ExportInfo) {
     match decl {
         Declaration::FunctionDeclaration(func) => {
             if let Some(id) = &func.id {
@@ -174,14 +287,21 @@ fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>) {
                     SymbolKind::Function,
                     func.span,
                     extract_params(&func.params),
+                    export.clone(),
                 );
             }
         }
         Declaration::ClassDeclaration(class) => {
             if let Some(id) = &class.id {
                 let class_name = id.name.to_string();
-                ctx.push(class_name, SymbolKind::Class, class.span, vec![]);
-                extract_class_methods(&class.body, ctx);
+                ctx.push(
+                    class_name.clone(),
+                    SymbolKind::Class,
+                    class.span,
+                    vec![],
+                    export.clone(),
+                );
+                extract_class_methods(&class.body, &class_name, ctx);
             }
         }
         Declaration::TSInterfaceDeclaration(iface) => {
@@ -190,6 +310,7 @@ fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>) {
                 SymbolKind::Interface,
                 iface.span,
                 vec![],
+                export.clone(),
             );
         }
         Declaration::TSTypeAliasDeclaration(alias) => {
@@ -198,19 +319,30 @@ fn extract_from_declaration(decl: &Declaration<'_>, ctx: &mut ExtractCtx<'_>) {
                 SymbolKind::Type,
                 alias.span,
                 vec![],
+                export.clone(),
             );
         }
         Declaration::TSEnumDeclaration(e) => {
-            ctx.push(e.id.name.to_string(), SymbolKind::Enum, e.span, vec![]);
+            ctx.push(
+                e.id.name.to_string(),
+                SymbolKind::Enum,
+                e.span,
+                vec![],
+                export.clone(),
+            );
         }
         Declaration::VariableDeclaration(decl) => {
-            extract_from_var_decl(decl, ctx);
+            extract_from_var_decl(decl, ctx, export);
         }
         _ => {}
     }
 }
 
-fn extract_from_var_decl(decl: &VariableDeclaration<'_>, ctx: &mut ExtractCtx<'_>) {
+fn extract_from_var_decl(
+    decl: &VariableDeclaration<'_>,
+    ctx: &mut ExtractCtx<'_>,
+    export: &ExportInfo,
+) {
     for declarator in &decl.declarations {
         let is_function = declarator.init.as_ref().is_some_and(|init| {
             matches!(
@@ -229,12 +361,18 @@ fn extract_from_var_decl(decl: &VariableDeclaration<'_>, ctx: &mut ExtractCtx<'_
                 Some(Expression::FunctionExpression(func)) => extract_params(&func.params),
                 _ => vec![],
             };
-            ctx.push(id.name.to_string(), SymbolKind::Function, decl.span, params);
+            ctx.push(
+                id.name.to_string(),
+                SymbolKind::Function,
+                decl.span,
+                params,
+                export.clone(),
+            );
         }
     }
 }
 
-fn extract_class_methods(body: &ClassBody<'_>, ctx: &mut ExtractCtx<'_>) {
+fn extract_class_methods(body: &ClassBody<'_>, class_name: &str, ctx: &mut ExtractCtx<'_>) {
     for element in &body.body {
         if let ClassElement::MethodDefinition(method) = element {
             if let Some(name) = method.key.static_name() {
@@ -245,9 +383,26 @@ fn extract_class_methods(body: &ClassBody<'_>, ctx: &mut ExtractCtx<'_>) {
                     .iter()
                     .filter_map(|p| binding_pattern_name(&p.pattern))
                     .collect();
-                ctx.push(name.to_string(), SymbolKind::Method, method.span, params);
+                ctx.push(
+                    name.to_string(),
+                    SymbolKind::Method,
+                    method.span,
+                    params,
+                    ExportInfo {
+                        publicness: Publicness::Private,
+                        export_kind: ExportKind::ModuleMember,
+                        container: Some(class_name.to_owned()),
+                    },
+                );
             }
         }
+    }
+}
+
+fn build_signature_preview(kind: SymbolKind, name: &str, params: &[String]) -> String {
+    match kind {
+        SymbolKind::Function | SymbolKind::Method => format!("{name}({})", params.join(", ")),
+        _ => name.to_owned(),
     }
 }
 
@@ -372,6 +527,8 @@ class UserService {
         let symbols = extract_ts_symbols(source, "test.ts");
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "validate");
+        assert_eq!(symbols[0].export.publicness, Publicness::Public);
+        assert_eq!(symbols[0].export.export_kind, ExportKind::Named);
     }
 
     #[test]
@@ -393,11 +550,62 @@ function validateToken(token: string): Payload { }
         assert_eq!(symbols.len(), 1);
         assert!(
             symbols[0]
-                .doc_comment
+                .comment
                 .as_ref()
+                .and_then(|comment| comment.summary_line.as_deref())
                 .unwrap()
                 .contains("Validates a JWT")
         );
+    }
+
+    #[test]
+    fn test_non_exported_function_is_private() {
+        let source = "function validate(token: string): boolean { return true; }";
+        let symbols = extract_ts_symbols(source, "test.ts");
+        assert_eq!(symbols[0].export.publicness, Publicness::Private);
+        assert_eq!(symbols[0].export.export_kind, ExportKind::None);
+    }
+
+    #[test]
+    fn test_export_specifier_from_other_module_creates_reexport_document() {
+        let docs = extract_ts_documents(
+            "export { validateToken as createSession } from './auth';",
+            "src/index.ts",
+        );
+
+        assert!(matches!(
+            &docs[0],
+            IndexDocument::Reexport(reexport)
+                if reexport.local_name == "validateToken"
+                    && reexport.exported_name == "createSession"
+                    && reexport.source_specifier.as_deref() == Some("./auth")
+        ));
+    }
+
+    #[test]
+    fn test_export_all_creates_wildcard_reexport_document() {
+        let docs = extract_ts_documents("export * from './auth';", "src/index.ts");
+
+        assert!(matches!(
+            &docs[0],
+            IndexDocument::Reexport(reexport)
+                if reexport.local_name == "*"
+                    && reexport.exported_name == "*"
+                    && reexport.source_specifier.as_deref() == Some("./auth")
+        ));
+    }
+
+    #[test]
+    fn test_export_namespace_creates_namespace_reexport_document() {
+        let docs = extract_ts_documents("export * as authApi from './auth';", "src/index.ts");
+
+        assert!(matches!(
+            &docs[0],
+            IndexDocument::Reexport(reexport)
+                if reexport.local_name == "*"
+                    && reexport.exported_name == "authApi"
+                    && reexport.source_specifier.as_deref() == Some("./auth")
+        ));
     }
 
     #[test]

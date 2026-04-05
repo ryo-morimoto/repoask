@@ -44,18 +44,16 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
         // Check for heading
         if let Some((depth, title)) = parse_heading(line) {
             // Flush previous section
-            if !current_title.is_empty() || !current_content.trim().is_empty() {
-                let hierarchy = heading_stack.iter().map(|(_, t)| t.clone()).collect();
-                sections.push(DocSection {
-                    filepath: filepath.to_owned(),
-                    section_title: current_title.clone(),
-                    heading_hierarchy: hierarchy,
-                    content: current_content.trim().to_owned(),
-                    code_symbols: current_code_symbols.clone(),
-                    start_line: section_start_line,
-                    end_line: line_1based.saturating_sub(1),
-                });
-            }
+            push_section(
+                &mut sections,
+                filepath,
+                &current_title,
+                &heading_stack,
+                &current_content,
+                &current_code_symbols,
+                section_start_line,
+                line_1based.saturating_sub(1),
+            );
 
             // Update heading stack: pop everything at same or deeper level
             while heading_stack.last().is_some_and(|(d, _)| *d >= depth) {
@@ -77,22 +75,16 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
 
     // Flush last section
     let total_lines = saturating_u32(source.lines().count());
-    if !current_title.is_empty() || !current_content.trim().is_empty() {
-        let hierarchy = heading_stack.iter().map(|(_, t)| t.clone()).collect();
-        sections.push(DocSection {
-            filepath: filepath.to_owned(),
-            section_title: if current_title.is_empty() {
-                "Introduction".to_owned()
-            } else {
-                current_title
-            },
-            heading_hierarchy: hierarchy,
-            content: current_content.trim().to_owned(),
-            code_symbols: current_code_symbols,
-            start_line: section_start_line,
-            end_line: total_lines,
-        });
-    }
+    push_section(
+        &mut sections,
+        filepath,
+        &current_title,
+        &heading_stack,
+        &current_content,
+        &current_code_symbols,
+        section_start_line,
+        total_lines,
+    );
 
     // Handle files with no headings at all
     if sections.is_empty() && !source.trim().is_empty() {
@@ -108,6 +100,51 @@ pub fn parse_markdown(source: &str, filepath: &str) -> Vec<DocSection> {
     }
 
     sections
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "flushes one markdown section from parser state"
+)]
+fn push_section(
+    sections: &mut Vec<DocSection>,
+    filepath: &str,
+    current_title: &str,
+    heading_stack: &[(u8, String)],
+    current_content: &str,
+    current_code_symbols: &[String],
+    start_line: u32,
+    end_line: u32,
+) {
+    let trimmed_content = current_content.trim();
+    let has_body = !trimmed_content.is_empty();
+    let has_code_symbols = !current_code_symbols.is_empty();
+
+    if current_title.is_empty() && !has_body {
+        return;
+    }
+
+    if !current_title.is_empty() && !has_body && !has_code_symbols {
+        return;
+    }
+
+    let hierarchy = heading_stack
+        .iter()
+        .map(|(_, title)| title.clone())
+        .collect();
+    sections.push(DocSection {
+        filepath: filepath.to_owned(),
+        section_title: if current_title.is_empty() {
+            "Introduction".to_owned()
+        } else {
+            current_title.to_owned()
+        },
+        heading_hierarchy: hierarchy,
+        content: trimmed_content.to_owned(),
+        code_symbols: current_code_symbols.to_vec(),
+        start_line,
+        end_line,
+    });
 }
 
 fn parse_heading(line: &str) -> Option<(u8, String)> {
@@ -227,6 +264,19 @@ mod tests {
         let sections = parse_markdown(md, "doc.md");
         assert_eq!(sections[0].start_line, 1);
         assert_eq!(sections[1].start_line, 5);
+    }
+
+    #[test]
+    fn test_empty_heading_sections_are_skipped() {
+        let md = "# Root\n\n## API\n\n### validateToken\n\nReturns a session.\n";
+        let sections = parse_markdown(md, "doc.md");
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].section_title, "validateToken");
+        assert_eq!(
+            sections[0].heading_hierarchy,
+            vec!["Root", "API", "validateToken"]
+        );
     }
 
     // -----------------------------------------------------------------------

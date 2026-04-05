@@ -101,7 +101,7 @@ fn language_for_extension(ext: &str) -> Option<(tree_sitter::Language, &'static 
 #[allow(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
-    use repoask_core::types::{Symbol, SymbolKind};
+    use repoask_core::types::{Publicness, Symbol, SymbolKind};
 
     fn get_symbols(filepath: &str, source: &str) -> Vec<Symbol> {
         match parse_file(filepath, source) {
@@ -109,7 +109,7 @@ mod tests {
                 .into_iter()
                 .filter_map(|doc| match doc {
                     IndexDocument::Code(s) => Some(s),
-                    IndexDocument::Doc(_) => None,
+                    IndexDocument::Reexport(_) | IndexDocument::Doc(_) => None,
                 })
                 .collect(),
             ParseOutcome::Unsupported { .. } | ParseOutcome::Failed { .. } => vec![],
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_rust() {
-        let source = "/// Add two numbers\nfn add(a: i32, b: i32) -> i32 { a + b }\n\nstruct Point { x: f64 }\n\nenum Color { Red }\n";
+        let source = "/// Add two numbers\npub fn add(a: i32, b: i32) -> i32 { a + b }\n\nstruct Point { x: f64 }\n\nenum Color { Red }\n";
         let symbols = get_symbols("lib.rs", source);
         assert!(
             symbols
@@ -137,11 +137,13 @@ mod tests {
         );
         let add = symbols.iter().find(|s| s.name == "add").unwrap();
         assert!(
-            add.doc_comment
+            add.comment
                 .as_ref()
+                .and_then(|comment| comment.summary_line.as_deref())
                 .unwrap()
                 .contains("Add two numbers")
         );
+        assert_eq!(add.export.publicness, Publicness::Public);
     }
 
     #[test]
@@ -158,13 +160,18 @@ mod tests {
                 .iter()
                 .any(|s| s.name == "UserService" && s.kind == SymbolKind::Class)
         );
-        assert!(symbols.iter().any(|s| s.name == "find"));
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "find" && s.kind == SymbolKind::Method)
+        );
+        let greet = symbols.iter().find(|s| s.name == "greet").unwrap();
+        assert_eq!(greet.export.publicness, Publicness::Public);
     }
 
     #[test]
     fn test_go() {
-        let source =
-            "func main() {\n\tfmt.Println(\"hello\")\n}\n\ntype Config struct {\n\tPort int\n}\n";
+        let source = "func main() {\n\tfmt.Println(\"hello\")\n}\n\nfunc ParseConfig() {}\n\ntype Config struct {\n\tPort int\n}\n";
         let symbols = get_symbols("main.go", source);
         assert!(
             symbols
@@ -174,7 +181,29 @@ mod tests {
         assert!(
             symbols
                 .iter()
+                .any(|s| s.name == "ParseConfig" && s.export.publicness == Publicness::Public)
+        );
+        assert!(
+            symbols
+                .iter()
                 .any(|s| s.name == "Config" && s.kind == SymbolKind::Type)
+        );
+    }
+
+    #[test]
+    fn test_ruby_module_kind() {
+        let source = "module Auth\n  def login(token)\n  end\nend\n";
+        let symbols = get_symbols("auth.rb", source);
+
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Auth" && s.kind == SymbolKind::Module)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "login" && s.kind == SymbolKind::Method)
         );
     }
 

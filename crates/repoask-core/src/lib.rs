@@ -4,6 +4,8 @@
 pub mod bm25;
 /// Inverted index construction and search.
 pub mod index;
+/// Investigation-specific cards, refs, and render budgets.
+pub mod investigation;
 /// Text tokenization for identifiers, queries, and natural language.
 pub mod tokenizer;
 /// Shared types for index documents, search results, and symbols.

@@ -165,11 +165,11 @@ impl InvertedIndex {
     }
 
     fn add_document(&mut self, doc: &IndexDocument, term_freq_buf: &mut HashMap<String, u16>) {
-        let doc_id = saturating_doc_id(self.documents.len());
-        let mut lengths = [0u16; NUM_FIELDS];
-
         match doc {
+            IndexDocument::Reexport(_) => {}
             IndexDocument::Code(symbol) => {
+                let doc_id = saturating_doc_id(self.documents.len());
+                let mut lengths = [0u16; NUM_FIELDS];
                 let is_example = is_example_path(&symbol.filepath);
 
                 // Field 0: symbol name tokens
@@ -178,8 +178,12 @@ impl InvertedIndex {
                 self.add_field_tokens(doc_id, FIELD_SYMBOL_NAME, &name_tokens, term_freq_buf);
 
                 // Field 1: doc comment tokens
-                if let Some(ref comment) = symbol.doc_comment {
-                    let comment_tokens = tokenize_text(comment);
+                if let Some(comment_text) = symbol
+                    .comment
+                    .as_ref()
+                    .and_then(crate::types::CommentInfo::searchable_text)
+                {
+                    let comment_tokens = tokenize_text(&comment_text);
                     lengths[usize::from(FIELD_DOC_CONTENT)] = saturating_u16(comment_tokens.len());
                     self.add_field_tokens(
                         doc_id,
@@ -211,8 +215,20 @@ impl InvertedIndex {
                     end_line: symbol.end_line,
                     is_example,
                 });
+
+                // Update field stats
+                for (i, &len) in lengths.iter().enumerate() {
+                    self.field_stats[i].total_length += u64::from(len);
+                    if len > 0 {
+                        self.field_stats[i].doc_count += 1;
+                    }
+                }
+
+                self.field_lengths.push(lengths);
             }
             IndexDocument::Doc(section) => {
+                let doc_id = saturating_doc_id(self.documents.len());
+                let mut lengths = [0u16; NUM_FIELDS];
                 // Field 0: heading tokens (same weight slot as symbol name)
                 let mut heading_tokens = tokenize_text(&section.section_title);
                 for ancestor in &section.heading_hierarchy {
@@ -247,18 +263,18 @@ impl InvertedIndex {
                     section_title: section.section_title.clone(),
                     content_preview: preview,
                 });
+
+                // Update field stats
+                for (i, &len) in lengths.iter().enumerate() {
+                    self.field_stats[i].total_length += u64::from(len);
+                    if len > 0 {
+                        self.field_stats[i].doc_count += 1;
+                    }
+                }
+
+                self.field_lengths.push(lengths);
             }
         }
-
-        // Update field stats
-        for (i, &len) in lengths.iter().enumerate() {
-            self.field_stats[i].total_length += u64::from(len);
-            if len > 0 {
-                self.field_stats[i].doc_count += 1;
-            }
-        }
-
-        self.field_lengths.push(lengths);
     }
 
     fn add_field_tokens(
@@ -476,8 +492,10 @@ mod tests {
             filepath: filepath.to_owned(),
             start_line: 1,
             end_line: 10,
-            doc_comment: None,
             params: vec![],
+            signature_preview: None,
+            comment: None,
+            export: crate::types::ExportInfo::default(),
         })
     }
 

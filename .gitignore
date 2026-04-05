@@ -14,3 +14,4 @@ semgrep.sarif
 credentials
 credentials.*
 secrets.*
+.worktrees

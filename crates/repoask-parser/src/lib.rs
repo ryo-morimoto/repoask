@@ -46,14 +46,14 @@ pub fn parse_file(filepath: &str, source: &str) -> ParseOutcome {
 
     match ext {
         "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs" => {
-            let symbols = oxc::extract_ts_symbols(source, filepath);
-            if symbols.is_empty() && !source.trim().is_empty() {
+            let documents = oxc::extract_ts_documents(source, filepath);
+            if documents.is_empty() && !source.trim().is_empty() {
                 ParseOutcome::Failed {
                     filepath: filepath.to_owned(),
                     reason: "oxc parser returned no symbols (possible parse error)".to_owned(),
                 }
             } else {
-                ParseOutcome::Ok(symbols.into_iter().map(IndexDocument::Code).collect())
+                ParseOutcome::Ok(documents)
             }
         }
         "md" | "mdx" => {

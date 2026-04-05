@@ -1,0 +1,1 @@
+This unsupported fixture file should be reported by parse_directory.

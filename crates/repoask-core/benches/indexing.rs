@@ -4,7 +4,9 @@
 
 use divan::Bencher;
 use repoask_core::index::InvertedIndex;
-use repoask_core::types::{DocSection, IndexDocument, Symbol, SymbolKind};
+use repoask_core::types::{
+    CommentInfo, CommentSource, DocSection, ExportInfo, IndexDocument, Symbol, SymbolKind,
+};
 
 fn main() {
     divan::main();
@@ -33,8 +35,13 @@ fn generate_docs(n: usize) -> Vec<IndexDocument> {
                     filepath: format!("src/module_{}/handler.rs", i % 50),
                     start_line: 1,
                     end_line: 30,
-                    doc_comment: Some(format!("Validates item number {i}")),
                     params: vec![format!("item_id_{i}"), "context".to_owned()],
+                    signature_preview: Some(format!("validateItem{i}(item_id_{i}, context)")),
+                    comment: CommentInfo::from_normalized_text(
+                        &format!("Validates item number {i}"),
+                        CommentSource::PlainComment,
+                    ),
+                    export: ExportInfo::default(),
                 })
             }
         })

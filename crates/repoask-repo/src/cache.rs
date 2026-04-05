@@ -53,10 +53,28 @@ pub fn repo_index_path(owner: &str, repo: &str) -> PathBuf {
     repo_cache_dir(owner, repo).join("index.bin")
 }
 
+/// Returns the path for the serialized investigation corpus.
+#[must_use]
+pub fn repo_corpus_path(owner: &str, repo: &str) -> PathBuf {
+    repo_cache_dir(owner, repo).join("corpus.bin")
+}
+
+/// Returns the path for the index metadata.
+#[must_use]
+pub fn repo_index_meta_path(owner: &str, repo: &str) -> PathBuf {
+    repo_cache_dir(owner, repo).join("index.meta.json")
+}
+
+/// Returns the path for the investigation corpus metadata.
+#[must_use]
+pub fn repo_corpus_meta_path(owner: &str, repo: &str) -> PathBuf {
+    repo_cache_dir(owner, repo).join("corpus.meta.json")
+}
+
 /// Returns the path for the index metadata.
 #[must_use]
 pub fn repo_meta_path(owner: &str, repo: &str) -> PathBuf {
-    repo_cache_dir(owner, repo).join("index.meta.json")
+    repo_index_meta_path(owner, repo)
 }
 
 /// Returns the path for the lock file.
@@ -181,4 +199,17 @@ fn dir_size(path: &std::path::Path) -> std::io::Result<u64> {
         }
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn artifact_metadata_paths_are_distinct() {
+        assert_ne!(
+            repo_index_meta_path("owner", "repo"),
+            repo_corpus_meta_path("owner", "repo")
+        );
+    }
 }

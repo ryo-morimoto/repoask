@@ -108,5 +108,5 @@ pub(crate) const RUBY: &str = r"
   name: (constant) @name) @definition.class
 
 (module
-  name: (constant) @name) @definition.class
+  name: (constant) @name) @definition.module
 ";

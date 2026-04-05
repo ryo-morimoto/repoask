@@ -4,7 +4,9 @@
 
 use divan::Bencher;
 use repoask_core::index::InvertedIndex;
-use repoask_core::types::{IndexDocument, SearchResult, Symbol, SymbolKind};
+use repoask_core::types::{
+    CommentInfo, CommentSource, ExportInfo, IndexDocument, SearchResult, Symbol, SymbolKind,
+};
 
 fn main() {
     divan::main();
@@ -19,8 +21,13 @@ fn build_index(n: usize) -> InvertedIndex {
                 filepath: format!("src/mod_{}/lib.rs", i % 100),
                 start_line: 1,
                 end_line: 20,
-                doc_comment: Some(format!("Process request for handler {i}")),
                 params: vec![format!("req_{i}"), "ctx".to_owned()],
+                signature_preview: Some(format!("function_{i}(req_{i}, ctx)")),
+                comment: CommentInfo::from_normalized_text(
+                    &format!("Process request for handler {i}"),
+                    CommentSource::PlainComment,
+                ),
+                export: ExportInfo::default(),
             })
         })
         .collect();

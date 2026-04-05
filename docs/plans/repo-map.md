@@ -340,35 +340,82 @@ pub enum CommentNormalizationStatus {
 
 ### 何を使うかの基準
 
-comment には大量の情報があるが、overview/search/inspect で使うのは次の条件を満たすものに限る。
+comment には大量の情報があるが、bug investigation で価値が高い field は偏っている。
+抽出できても、以下の順で優先しない field は通常の出力には載せない。
 
-1. **symbol-local**: その symbol の契約や挙動に直接ひも付く
-2. **deterministic**: prose 生成なしで安定して抽出できる
-3. **compact**: token budget に対して情報効率が高い
-4. **actionable**: 次の inspect/read/test の判断に使える
-5. **graceful fallback**: 取れなくても他情報で代替できる
+#### Priority 1: 契約と移行リスクに直結する field
 
-この基準での優先順位:
+- `deprecated` / `experimental` / `internal` / `unsafe` 相当 flag
+- `throws` / `errors` / `panics` / `raises`
+- `returns` の要点
 
-- Tier A: 常に使う
-  - `summary_line`
-  - `deprecated` / `internal` 相当 flag
-  - `params` / `returns` / `throws` / `errors` / `panics` の要約
+理由:
+
+- 「その API を使ってよいか」
+- 「壊れた原因が契約違反か」
+- 「失敗時の挙動がどこに書かれているか」
+
+を最短で判断できるため。
+
+#### Priority 2: 実際の使い方に直結する field
+
+- `examples` の有無
+- first example snippet
+- `params` の要約
+
+理由:
+
+- agent は prose より example と call shape から読む方が速い
+- バグ調査では「正しい呼び方」と「現状コードの呼び方」の差分が重要
+
+#### Priority 3: 最小説明として有用な field
+
+- `summary_line`
+- section heading (`Examples`, `Errors`, `Panics`, `Safety`)
+
+理由:
+
+- 上の field が十分でないときの補助線として有用
+- ただし summary は便利だが、examples や deprecated ほど価値は高くない
+
+#### Priority 4: 通常は出さない field
+
+- 長文の tutorial prose
+- markdown decoration や link reference
+- repo 全体の導入文や marketing 的説明
+
+理由:
+
+- token 効率が悪く、次の一手を決める情報密度が低い
+
+### mode ごとの表示優先順位
+
+- `overview`
+  - `deprecated` / important flags
   - example の有無
-- Tier B: inspect で budget に余裕があるときだけ使う
-  - `body_preview`
+  - `returns` / `throws` の要点
+  - `summary_line` は補助
+- `search`
+  - `deprecated` / flags
+  - example の有無
+  - `returns` / `throws` の要点
+  - `summary_line` は card の 1 行補助に限定
+- `inspect`
+  - `deprecated` / flags
   - first example snippet
-  - section headings (`Examples`, `Errors`, `Panics`, `Safety`)
-- Tier C: 収集しても通常は使わない
-  - 長文の tutorial prose
-  - markdown decoration や link reference
-  - repo 全体の導入文や marketing 的説明
+  - `throws` / `errors` / `panics`
+  - `params` / `returns`
+  - `summary_line`
+  - budget に余裕があるときだけ `body_preview`
 
-mode ごとの使用方針:
+### 使う/使わない判定ルール
 
-- `overview`: `summary_line`, flag, test linkage のみ
-- `search`: `summary_line` と contract 差分に効く最小 field のみ
-- `inspect`: `summary_line`, signature, linked tests を主にし、budget に余裕がある場合だけ B を追加
+field を surface に出すのは、少なくとも次の 1 つを満たすときだけにする。
+
+1. 呼び方を修正する判断に効く (`examples`, `params`)
+2. 非互換や危険信号を示す (`deprecated`, `unsafe`, `experimental`)
+3. 失敗時挙動の調査に効く (`throws`, `errors`, `panics`)
+4. 上のどれも無いときの最小 fallback として有効 (`summary_line`)
 
 ### JSDoc
 

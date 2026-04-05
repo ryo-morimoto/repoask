@@ -7,7 +7,9 @@
 
 use std::cell::RefCell;
 
-use repoask_core::types::{Symbol, SymbolKind};
+use repoask_core::types::{
+    CommentInfo, CommentSource, ExportInfo, ExportKind, Publicness, Symbol, SymbolKind,
+};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator};
 
 thread_local! {
@@ -21,6 +23,7 @@ pub(crate) fn extract_symbols(
     language: &Language,
     query_source: &str,
 ) -> Vec<Symbol> {
+    let comment_source = comment_source_for_filepath(filepath);
     let tree = PARSER.with(|p| {
         let mut parser = p.borrow_mut();
         if parser.set_language(language).is_err() {
@@ -63,6 +66,7 @@ pub(crate) fn extract_symbols(
                     kind = match capture_name {
                         "definition.method" => SymbolKind::Method,
                         "definition.class" => SymbolKind::Class,
+                        "definition.module" => SymbolKind::Module,
                         "definition.struct" => SymbolKind::Struct,
                         "definition.enum" => SymbolKind::Enum,
                         "definition.interface" => SymbolKind::Interface,
@@ -79,15 +83,25 @@ pub(crate) fn extract_symbols(
             }
         }
 
+        if let Some(node) = def_node {
+            kind = refine_symbol_kind(kind, node, filepath);
+        }
+
         if !name.is_empty() && start_line > 0 {
-            let doc_comment = def_node.and_then(|n| extract_doc_comment(n, source));
+            let comment =
+                def_node.and_then(|node| extract_doc_comment(node, source, comment_source));
+            let export = def_node.map_or_else(ExportInfo::unknown, |node| {
+                extract_export_info(node, filepath, kind, &name, source)
+            });
             symbols.push(Symbol {
+                signature_preview: Some(build_signature_preview(kind, &name, &params)),
+                comment,
+                export,
                 name,
                 kind,
                 filepath: filepath.to_owned(),
                 start_line,
                 end_line,
-                doc_comment,
                 params,
             });
         }
@@ -128,7 +142,11 @@ fn find_param_name(node: Node, source: &str) -> Option<String> {
     None
 }
 
-fn extract_doc_comment(node: Node, source: &str) -> Option<String> {
+fn extract_doc_comment(
+    node: Node,
+    source: &str,
+    comment_source: CommentSource,
+) -> Option<CommentInfo> {
     let mut current = node;
     let mut comment_lines = Vec::new();
 
@@ -166,7 +184,140 @@ fn extract_doc_comment(node: Node, source: &str) -> Option<String> {
     if joined.is_empty() {
         None
     } else {
-        Some(joined)
+        CommentInfo::from_normalized_text(&joined, comment_source)
+    }
+}
+
+fn extract_export_info(
+    node: Node,
+    filepath: &str,
+    kind: SymbolKind,
+    name: &str,
+    source: &str,
+) -> ExportInfo {
+    match extension_for_filepath(filepath) {
+        Some("rs") => rust_export_info(node, kind, source),
+        Some("py" | "pyi") => python_export_info(kind, name),
+        Some("go") => go_export_info(kind, name),
+        Some("java") => java_export_info(node, kind, source),
+        Some("rb") => ruby_export_info(kind, name),
+        Some("c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx") => {
+            c_like_export_info(node, kind, source)
+        }
+        _ => ExportInfo::unknown(),
+    }
+}
+
+fn refine_symbol_kind(kind: SymbolKind, node: Node, filepath: &str) -> SymbolKind {
+    match extension_for_filepath(filepath) {
+        Some("py" | "pyi")
+            if kind == SymbolKind::Function && has_ancestor_kind(node, "class_definition") =>
+        {
+            SymbolKind::Method
+        }
+        _ => kind,
+    }
+}
+
+fn has_ancestor_kind(mut node: Node, target_kind: &str) -> bool {
+    while let Some(parent) = node.parent() {
+        if parent.kind() == target_kind {
+            return true;
+        }
+        node = parent;
+    }
+    false
+}
+
+fn rust_export_info(node: Node, kind: SymbolKind, source: &str) -> ExportInfo {
+    let export_kind = if kind == SymbolKind::Method {
+        ExportKind::ModuleMember
+    } else {
+        ExportKind::Named
+    };
+
+    let item_text = source[node.byte_range()].trim_start();
+    if item_text.starts_with("pub ") {
+        ExportInfo::new(Publicness::Public, export_kind)
+    } else if item_text.starts_with("pub(") {
+        ExportInfo::new(Publicness::Package, export_kind)
+    } else if kind == SymbolKind::Method {
+        ExportInfo::new(Publicness::Private, ExportKind::ModuleMember)
+    } else {
+        ExportInfo::private()
+    }
+}
+
+fn python_export_info(kind: SymbolKind, name: &str) -> ExportInfo {
+    visibility_by_convention(kind, name)
+}
+
+fn go_export_info(kind: SymbolKind, name: &str) -> ExportInfo {
+    visibility_by_convention(kind, name)
+}
+
+fn ruby_export_info(kind: SymbolKind, name: &str) -> ExportInfo {
+    visibility_by_convention(kind, name)
+}
+
+fn java_export_info(node: Node, kind: SymbolKind, source: &str) -> ExportInfo {
+    let export_kind = member_aware_export_kind(kind);
+    let item_text = source[node.byte_range()].trim_start();
+    if item_text.starts_with("public ") {
+        ExportInfo::new(Publicness::Public, export_kind)
+    } else if item_text.starts_with("private ") {
+        ExportInfo::new(Publicness::Private, export_kind)
+    } else {
+        ExportInfo::new(Publicness::Package, export_kind)
+    }
+}
+
+fn c_like_export_info(node: Node, kind: SymbolKind, source: &str) -> ExportInfo {
+    let item_text = source[node.byte_range()].trim_start();
+    if item_text.starts_with("static ") {
+        ExportInfo::new(Publicness::Private, member_aware_export_kind(kind))
+    } else {
+        ExportInfo::new(Publicness::Public, member_aware_export_kind(kind))
+    }
+}
+
+fn visibility_by_convention(kind: SymbolKind, name: &str) -> ExportInfo {
+    if name.starts_with('_') {
+        ExportInfo::new(Publicness::Private, member_aware_export_kind(kind))
+    } else if name
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_uppercase() || ch.is_lowercase())
+    {
+        ExportInfo::new(Publicness::Public, member_aware_export_kind(kind))
+    } else {
+        ExportInfo::unknown()
+    }
+}
+
+fn member_aware_export_kind(kind: SymbolKind) -> ExportKind {
+    if kind == SymbolKind::Method {
+        ExportKind::ModuleMember
+    } else {
+        ExportKind::Named
+    }
+}
+
+fn comment_source_for_filepath(filepath: &str) -> CommentSource {
+    match extension_for_filepath(filepath) {
+        Some("rs") => CommentSource::RustDoc,
+        _ => CommentSource::PlainComment,
+    }
+}
+
+fn extension_for_filepath(filepath: &str) -> Option<&str> {
+    filepath.rsplit('.').next()
+}
+
+fn build_signature_preview(kind: SymbolKind, name: &str, params: &[String]) -> String {
+    match kind {
+        SymbolKind::Function | SymbolKind::Method => format!("{name}({})", params.join(", ")),
+        _ => name.to_owned(),
     }
 }
 
