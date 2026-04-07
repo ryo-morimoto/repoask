@@ -1,17 +1,90 @@
 {
-  description = "repoask development environment";
+  description = "repoask – code understanding tool for any repository";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      crane,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
+        craneLib = crane.mkLib pkgs;
+
+        # Common source filtering – keep Cargo files, Rust sources, and
+        # tree-sitter grammar C/C++ sources that get compiled at build time.
+        src = pkgs.lib.cleanSourceWith {
+          src = craneLib.path ./.;
+          filter =
+            path: type:
+            (craneLib.filterCargoSources path type) || (builtins.match ".*\\.(c|cc|cpp|h|hpp)$" path != null);
+        };
+
+        # Native deps needed to compile tree-sitter C grammars
+        nativeDeps = with pkgs; [ pkg-config ];
+        buildDeps =
+          with pkgs;
+          [ ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.darwin.apple_sdk.frameworks.Security
+            pkgs.libiconv
+          ];
+
+        commonArgs = {
+          inherit src;
+          strictDeps = true;
+          nativeBuildInputs = nativeDeps;
+          buildInputs = buildDeps;
+          # Exclude wasm crate – it needs wasm32 target and bloats native builds
+          cargoExtraArgs = "--workspace --exclude repoask-wasm";
+        };
+
+        # Build workspace deps first (cache layer) – wasm excluded
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        # Helper to build a single package
+        buildPkg =
+          name: extra:
+          craneLib.buildPackage (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoExtraArgs = "--package ${name}";
+              doCheck = false; # tests run in CI
+            }
+            // extra
+          );
+
+        # CLI binary
+        repoask = buildPkg "repoask" { };
+
+        # Library crates (for use as Nix dependencies)
+        repoask-core = buildPkg "repoask-core" { };
+        repoask-parser = buildPkg "repoask-parser" { };
+        repoask-treesitter = buildPkg "repoask-treesitter" { };
+        repoask-repo = buildPkg "repoask-repo" { };
       in
       {
+        packages = {
+          default = repoask;
+          inherit
+            repoask
+            repoask-core
+            repoask-parser
+            repoask-treesitter
+            repoask-repo
+            ;
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # === Rust toolchain ===
@@ -38,18 +111,18 @@
             git
 
             # === Dev tools (HARNESS Layer 2-4) ===
-            cargo-nextest  # test runner
-            cargo-deny     # dependency audit
-            cargo-insta    # snapshot testing
+            cargo-nextest # test runner
+            cargo-deny # dependency audit
+            cargo-insta # snapshot testing
             cargo-llvm-cov # coverage reporting
-            cargo-shear    # static unused/misplaced dependency detection
-            cargo-udeps    # unused dependency linting
-            cargo-modules  # module structure visualization
-            gitleaks       # secret scanning
-            just           # task runner
-            prek           # git hooks
-            semgrep        # SAST scanning
-            typos          # spell checker
+            cargo-shear # static unused/misplaced dependency detection
+            cargo-udeps # unused dependency linting
+            cargo-modules # module structure visualization
+            gitleaks # secret scanning
+            just # task runner
+            prek # git hooks
+            semgrep # SAST scanning
+            typos # spell checker
 
             # === Documentation ===
             mdbook # if we add a docs site later
@@ -69,5 +142,6 @@
             fi
           '';
         };
-      });
+      }
+    );
 }
