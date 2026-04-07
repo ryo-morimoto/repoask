@@ -60,6 +60,11 @@ similar-check:
     similarity-rs crates/ --skip-test --threshold 0.96 --exclude benches --fail-on-duplicates
     similarity-rs crates/ --skip-test --experimental-types --no-functions --threshold 0.95 --fail-on-duplicates
 
+# Build WASM package with size-optimized settings.
+# opt-level=z applies to the entire dependency tree via env var.
+wasm-build:
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=z wasm-pack build wasm --target web
+
 clean:
     cargo clean
     rm -rf mutants.out/ lcov.info

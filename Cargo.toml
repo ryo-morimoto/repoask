@@ -90,3 +90,10 @@ undocumented_unsafe_blocks = "deny"
 lto = true
 codegen-units = 1
 strip = true
+
+# WASM crate and its dependencies: optimize for size rather than speed.
+# Per-package opt-level only affects that crate's own codegen; dependencies
+# (repoask-core, repoask-parser, serde, etc.) use the top-level
+# profile.release.opt-level. Since wasm-pack builds the entire dependency
+# tree, we set opt-level=z via CARGO_PROFILE_RELEASE_OPT_LEVEL in the
+# wasm-pack invocation instead. See justfile `wasm-build` recipe.
