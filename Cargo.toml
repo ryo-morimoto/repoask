@@ -8,6 +8,9 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ryo-morimoto/repoask"
 
+[workspace.metadata.crane]
+name = "repoask"
+
 [workspace.dependencies]
 repoask-core = { path = "crates/repoask-core", version = "0.2.0" }
 repoask-parser = { path = "crates/repoask-parser", version = "0.2.0" }
