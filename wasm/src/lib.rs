@@ -70,6 +70,8 @@ impl RepoIndex {
     ///
     /// Returns an error if `build()` has not been called yet or if JSON serialization fails.
     pub fn search(&self, query: &str, limit: usize) -> Result<String, JsError> {
+        repoask_core::tokenizer::validate_query(query).map_err(|msg| JsError::new(&msg))?;
+
         let index = self
             .index
             .as_ref()

@@ -136,6 +136,7 @@ fn run_search(
     filters: &SearchFilters,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    repoask_core::tokenizer::validate_query(query)?;
     let (results, parse_report) = if verbose {
         let output = repo::search_with_report_and_filters(repo_spec, query, limit, filters)?;
         (output.results, output.parse_diagnostics)

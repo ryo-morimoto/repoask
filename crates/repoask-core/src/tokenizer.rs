@@ -82,7 +82,44 @@ pub fn tokenize_query(query: &str) -> Vec<String> {
     tokenize_text(query)
 }
 
+/// Check whether a query string contains only ASCII-compatible characters.
+///
+/// Returns `Ok(())` if the query is valid, or `Err` with a message listing
+/// the unsupported characters found. repoask's BM25 tokenizer works on
+/// ASCII identifiers and English stemming, so non-ASCII queries (e.g. CJK,
+/// Cyrillic) will silently produce zero results.
+///
+/// # Errors
+///
+/// Returns an error message when the query contains non-ASCII alphabetic
+/// characters.
+pub fn validate_query(query: &str) -> Result<(), String> {
+    let non_ascii: Vec<char> = query
+        .chars()
+        .filter(|c| !c.is_ascii() && c.is_alphabetic())
+        .collect();
+
+    if non_ascii.is_empty() {
+        return Ok(());
+    }
+
+    non_ascii_chars_deduped(&non_ascii)
+}
+
+/// Build a deduplicated error message from non-ASCII chars.
+fn non_ascii_chars_deduped(chars: &[char]) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<char> = chars.iter().copied().filter(|c| seen.insert(*c)).collect();
+    let sample: String = unique.iter().take(5).collect();
+    Err(format!(
+        "query contains non-ASCII characters ({sample:?}); \
+         repoask only supports English queries — \
+         rephrase your query in English"
+    ))
+}
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -163,6 +200,38 @@ mod tests {
                 "expected stemmed form {expected:?} of {word:?} in {tokens:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_validate_query_ascii_ok() {
+        assert!(validate_query("middleware authentication").is_ok());
+        assert!(validate_query("parse_json 123").is_ok());
+        assert!(validate_query("").is_ok());
+    }
+
+    #[test]
+    fn test_validate_query_cjk_rejected() {
+        let err = validate_query("認証 トークン").unwrap_err();
+        assert!(err.contains("non-ASCII"), "error: {err}");
+        assert!(err.contains("English"), "error: {err}");
+    }
+
+    #[test]
+    fn test_validate_query_cyrillic_rejected() {
+        let err = validate_query("поиск").unwrap_err();
+        assert!(err.contains("non-ASCII"), "error: {err}");
+    }
+
+    #[test]
+    fn test_validate_query_mixed_ascii_and_non_ascii_rejected() {
+        let err = validate_query("search 認証").unwrap_err();
+        assert!(err.contains("non-ASCII"), "error: {err}");
+    }
+
+    #[test]
+    fn test_validate_query_non_alpha_symbols_ok() {
+        // Emoji, digits, punctuation are non-alphabetic — allowed
+        assert!(validate_query("search 123 !!!").is_ok());
     }
 
     // -----------------------------------------------------------------------

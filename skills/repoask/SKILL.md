@@ -27,6 +27,7 @@ repoask cleanup [owner/repo]
 
 - First run clones the repo (~1-3s). Subsequent runs use cache (~6ms)
 - Default: 10 results, JSON lines output
+- **Queries must be in English.** Non-ASCII alphabetic characters are rejected
 - Exit code 1 + stderr message on error
 
 ## Output format
