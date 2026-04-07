@@ -1091,7 +1091,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "repoask"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "repoask-core",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "repoask-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "divan",
  "insta",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "repoask-parser"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "insta",
  "oxc_allocator",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "repoask-repo"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crossbeam-channel",
  "dirs",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "repoask-treesitter"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "repoask-core",
  "thiserror",
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "repoask-wasm"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "repoask-core",
  "repoask-parser",
