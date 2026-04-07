@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "cli", "wasm"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/ryo-morimoto/repoask"
@@ -13,9 +13,9 @@ name = "repoask"
 
 [workspace.dependencies]
 repoask-core = { path = "crates/repoask-core", version = "0.2.0" }
-repoask-parser = { path = "crates/repoask-parser", version = "0.2.0" }
-repoask-treesitter = { path = "crates/repoask-treesitter", version = "0.2.0" }
-repoask-repo = { path = "crates/repoask-repo", version = "0.2.0" }
+repoask-parser = { path = "crates/repoask-parser", version = "0.2.1" }
+repoask-treesitter = { path = "crates/repoask-treesitter", version = "0.2.1" }
+repoask-repo = { path = "crates/repoask-repo", version = "0.2.1" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
