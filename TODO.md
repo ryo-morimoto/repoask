@@ -12,10 +12,12 @@
 
 - [x] ~~**`clone.rs:68` — owner/repo が git URL に直接埋め込まれる。**~~ → `ensure_clone()` 冒頭で `is_valid_name()` (`^[a-zA-Z0-9._-]+$` 相当) バリデーション追加済み
 - [x] ~~**`clone.rs:73-75` — ref_spec が `--branch` に未検証で渡される。**~~ → `ensure_clone()` で先頭 `-` チェック追加済み
+- [ ] [confidence: high] **ref_spec バリデーションがキャッシュヒット時にスキップされる。** `ensure_clone()` は `repo_dir.exists()` で早期 return するため、キャッシュ済みリポジトリに `@--evil` のような不正 ref_spec を渡してもバリデーションを通らずキャッシュを返す。バリデーションを早期 return の前に移動する
 
 ### パストラバーサル
 
 - [x] ~~**`cache.rs:27-28` — owner/repo がファイルパスに直接結合される。**~~ → `repo_cache_dir()` に `is_safe_path_component()` assert 追加済み
+- [ ] [confidence: high] **`is_valid_name()` が `..` を通すためパストラバーサルが `cache.rs` の `assert!` で panic する。** `../etc` のような owner を渡すと `clone.rs` の `is_valid_name()` は `.` を許可しているため通過し、`cache.rs:32` の `assert!(is_safe_path_component(...))` で panic (exit 101) になる。ユーザー入力に対して panic は不適切。`is_valid_name()` で `..` を明示的に拒否するか、`cache.rs` の assert を `Result` エラーに変更する
 - [x] ~~**`cache.rs:52-55` — `cleanup_all()` が `REPOASK_CACHE_DIR` 環境変数のパスを `remove_dir_all` する。**~~ → パスに "repoask" を含むかチェック追加済み
 
 ### 信頼境界
