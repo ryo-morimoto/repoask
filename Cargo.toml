@@ -90,6 +90,7 @@ undocumented_unsafe_blocks = "deny"
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"
 
 # WASM crate and its dependencies: optimize for size rather than speed.
 # Per-package opt-level only affects that crate's own codegen; dependencies
