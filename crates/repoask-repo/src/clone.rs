@@ -21,8 +21,12 @@ pub enum CloneError {
 }
 
 /// Validate that an owner or repo name contains only safe characters.
+///
+/// Rejects empty strings, path-traversal components (`..`), and characters
+/// outside `[a-zA-Z0-9._-]`.
 fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
+        && name != ".."
         && name
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
@@ -56,6 +60,8 @@ pub fn ensure_clone(
 
     let repo_dir = cache::repo_clone_dir(owner, repo);
 
+    // NOTE: validation above runs unconditionally — even on cache hits —
+    // so invalid owner/repo/ref_spec is always rejected.
     if repo_dir.exists() {
         return Ok(repo_dir);
     }
@@ -158,5 +164,57 @@ pub fn head_commit(repo_dir: &Path) -> Option<String> {
         Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_names() {
+        assert!(is_valid_name("vercel"));
+        assert!(is_valid_name("next.js"));
+        assert!(is_valid_name("my-repo_123"));
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(!is_valid_name(""));
+    }
+
+    #[test]
+    fn rejects_dot_dot() {
+        assert!(!is_valid_name(".."));
+    }
+
+    #[test]
+    fn rejects_slash() {
+        assert!(!is_valid_name("a/b"));
+        assert!(!is_valid_name("a\\b"));
+    }
+
+    #[test]
+    fn rejects_non_ascii() {
+        assert!(!is_valid_name("リポ"));
+    }
+
+    #[test]
+    fn ensure_clone_rejects_dot_dot_owner() {
+        let err = ensure_clone("..", "repo", None).unwrap_err();
+        assert!(
+            matches!(err, CloneError::InvalidSpec(_)),
+            "expected InvalidSpec, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn ensure_clone_rejects_evil_ref_spec() {
+        let err = ensure_clone("owner", "repo", Some("--evil")).unwrap_err();
+        assert!(
+            matches!(err, CloneError::InvalidSpec(_)),
+            "expected InvalidSpec, got: {err:?}"
+        );
     }
 }

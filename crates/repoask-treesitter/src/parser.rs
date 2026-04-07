@@ -42,7 +42,7 @@ pub(crate) fn extract_symbols(
     let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
     let capture_names = query.capture_names();
 
-    let mut symbols = Vec::new();
+    let mut symbols: Vec<Symbol> = Vec::new();
 
     while let Some(m) = matches.next() {
         let mut name = String::new();
@@ -88,6 +88,19 @@ pub(crate) fn extract_symbols(
         }
 
         if !name.is_empty() && start_line > 0 {
+            // Deduplicate: if we already have a symbol at the same file+line
+            // range, keep the more specific kind (Method > Function).
+            if let Some(existing) = symbols.iter_mut().find(|s| {
+                s.filepath == filepath && s.start_line == start_line && s.end_line == end_line
+            }) {
+                if kind == SymbolKind::Method && existing.kind == SymbolKind::Function {
+                    existing.kind = SymbolKind::Method;
+                    existing.signature_preview =
+                        Some(build_signature_preview(SymbolKind::Method, &name, &params));
+                }
+                continue;
+            }
+
             let comment =
                 def_node.and_then(|node| extract_doc_comment(node, source, comment_source));
             let export = def_node.map_or_else(ExportInfo::unknown, |node| {

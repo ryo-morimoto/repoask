@@ -86,11 +86,29 @@ pub fn parse_repo_spec(spec: &str) -> Option<(&str, &str, Option<&str>)> {
 
     let (owner, repo) = main.split_once('/')?;
 
-    if owner.is_empty() || repo.is_empty() {
+    if !is_safe_repo_component(owner) || !is_safe_repo_component(repo) {
         return None;
     }
 
+    if let Some(r) = ref_spec {
+        if r.is_empty() || r.starts_with('-') {
+            return None;
+        }
+    }
+
     Some((owner, repo, ref_spec))
+}
+
+/// Check that a string is safe to use as a GitHub owner or repo name.
+///
+/// Rejects empty strings, path-traversal components (`..`), and characters
+/// outside `[a-zA-Z0-9._-]`.
+fn is_safe_repo_component(name: &str) -> bool {
+    !name.is_empty()
+        && name != ".."
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
 }
 
 /// Search a repository. Handles clone, indexing, caching, and search.
@@ -353,5 +371,17 @@ mod tests {
         assert!(parse_repo_spec("no-slash").is_none());
         assert!(parse_repo_spec("/repo").is_none());
         assert!(parse_repo_spec("owner/").is_none());
+    }
+
+    #[test]
+    fn test_parse_repo_spec_rejects_path_traversal() {
+        assert!(parse_repo_spec("../etc/passwd").is_none());
+        assert!(parse_repo_spec("owner/../etc").is_none());
+    }
+
+    #[test]
+    fn test_parse_repo_spec_rejects_evil_ref_spec() {
+        assert!(parse_repo_spec("owner/repo@--evil").is_none());
+        assert!(parse_repo_spec("owner/repo@").is_none());
     }
 }
