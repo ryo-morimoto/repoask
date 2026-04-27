@@ -37,10 +37,10 @@ tree-sitter-java = "0.23"
 tree-sitter-c = "0.24"
 tree-sitter-cpp = "0.23"
 tree-sitter-ruby = "0.23"
-oxc_parser = { version = "0.124", default-features = false }
-oxc_allocator = "0.124"
-oxc_ast = "0.124"
-oxc_span = "0.124"
+oxc_parser = { version = "0.127", default-features = false }
+oxc_allocator = "0.127"
+oxc_ast = "0.127"
+oxc_span = "0.127"
 ignore = "0.4"
 
 [workspace.lints.rust]
