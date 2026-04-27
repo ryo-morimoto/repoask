@@ -70,7 +70,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Typos
-        uses: crate-ci/typos@02ea592e44b3a53c302f697cddca7641cd051c3d # v1.29.10
+        uses: crate-ci/typos@cf5f1c29a8ac336af8568821ec41919923b05a83 # v1.29.10
 
   # Gate 1: Fast checks (< 1 min)
   check:
@@ -87,8 +87,8 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: cargo-shear@1.11.2
       - name: Format
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: just
       - name: Install Semgrep
@@ -137,7 +137,7 @@ jobs:
         run: just semgrep-sarif
       - name: Upload Semgrep report
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: semgrep-report
           path: semgrep.sarif
@@ -157,8 +157,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: nextest,cargo-insta
       - name: Tests
@@ -185,8 +185,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: nextest,cargo-insta
       - name: Tests
@@ -215,7 +215,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: nightly
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: cargo-udeps@0.1.60
       - name: Unused dependencies
@@ -235,7 +235,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: cargo-deny@0.19.0
       - name: Dependency audit
@@ -256,8 +256,8 @@ jobs:
         with:
           toolchain: stable
           components: llvm-tools-preview
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: cargo-llvm-cov,nextest
       - name: Coverage
@@ -286,8 +286,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      - uses: taiki-e/install-action@94cb46f8d6e437890146ffbd78a778b78e623fb2 # v2
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
         with:
           tool: nextest,cargo-mutants
       - name: Generate PR diff for cargo-mutants
@@ -296,7 +296,7 @@ jobs:
         run: cargo mutants --in-diff pr.diff --test-tool nextest --timeout 120
       - name: Upload mutants report
         if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutants-report
           path: mutants.out/
